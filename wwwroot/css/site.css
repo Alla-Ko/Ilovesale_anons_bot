@@ -1,0 +1,91 @@
+html {
+  font-size: 16px;
+}
+
+/* Шапка: темно-сірий фон, білі посилання (узгоджено з thead таблиць) */
+.app-header {
+  background-color: #212529;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.app-header .navbar-dark .nav-link:hover,
+.app-header .navbar-dark .nav-link:focus {
+  color: #fff !important;
+  text-decoration: underline;
+}
+
+.app-header .navbar-brand:hover {
+  color: #fff !important;
+}
+
+/* Таблиці списків: темний заголовок, білий текст */
+.table-app thead.table-dark th {
+  vertical-align: middle;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.table-app thead.table-dark a.link-light:hover {
+  color: #fff !important;
+  text-decoration: underline !important;
+}
+
+/* Помаранчева кнопка «Новий …» (Bootstrap не має окремого orange) */
+.btn-orange {
+  color: #fff;
+  background-color: #fd7e14;
+  border-color: #e8590c;
+}
+.btn-orange:hover {
+  color: #fff;
+  background-color: #e8590c;
+  border-color: #ca6510;
+}
+.btn-orange:focus {
+  color: #fff;
+  box-shadow: 0 0 0 0.2rem rgba(253, 126, 20, 0.45);
+}
+
+.collage-rows .collage-row {
+  max-width: 100%;
+}
+
+.collage-rows .collage-row-surface {
+  background: linear-gradient(180deg, #fff8f0 0%, #ffefd9 100%);
+  border: 1px solid #f0c896;
+}
+
+.collage-rows .collage-row-surface .card-body {
+  background: transparent;
+}
+
+.collage-rows .drop-zone {
+  background: #fffefb;
+  min-height: 4rem;
+}
+
+.collage-rows .drag-handle {
+  cursor: grab;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  background: rgba(253, 126, 20, 0.18);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.collage-rows .drag-handle:active {
+  cursor: grabbing;
+}
+
+@media (max-width: 576px) {
+  .table {
+    font-size: 0.9rem;
+  }
+
+  .table-announcements {
+    table-layout: fixed;
+  }
+
+  .table-announcements td:nth-child(3) {
+    word-break: break-word;
+  }
+}

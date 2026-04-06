@@ -1,0 +1,154 @@
+@page
+@model Announcement.Pages.Announcements.IndexModel
+@using Announcement.Models
+@using System.Globalization
+@{
+    ViewData["Title"] = "Анонси";
+}
+
+<h1>Анонси</h1>
+
+<form method="get" class="mb-3" style="max-width: 22rem;">
+    <input type="hidden" name="Sort" value="@Model.Sort" />
+    <input type="hidden" name="Dir" value="@Model.Dir" />
+    <label for="created-day-select" class="form-label small mb-1">Показати анонси</label>
+    <select id="created-day-select" name="CreatedDay" class="form-select form-select-sm" onchange="this.form.submit()">
+        @if (!Model.CreatedDay.HasValue)
+        {
+            <option value="" selected>Всі анонси</option>
+        }
+        else
+        {
+            <option value="">Всі анонси</option>
+        }
+        @foreach (var day in Model.AvailableDays)
+        {
+            var v = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (Model.CreatedDay == day)
+            {
+                <option value="@v" selected>@Model.FormatDayLabel(day)</option>
+            }
+            else
+            {
+                <option value="@v">@Model.FormatDayLabel(day)</option>
+            }
+        }
+    </select>
+</form>
+
+<p>
+    <a class="btn btn-sm btn-orange" asp-page="Create">Новий анонс</a>
+</p>
+
+<table class="table table-sm table-bordered align-middle table-app table-announcements">
+    <thead class="table-dark">
+        <tr>
+            <th><a class="link-light text-decoration-none" href="@Model.SortUrl("created")">Створено</a></th>
+            <th class="d-none d-md-table-cell"><a class="link-light text-decoration-none" href="@Model.SortUrl("updated")">Змінено</a></th>
+            <th><a class="link-light text-decoration-none" href="@Model.SortUrl("title")">Назва</a></th>
+            <th class="d-none d-md-table-cell"><a class="link-light text-decoration-none" href="@Model.SortUrl("country")">Країна</a></th>
+            <th class="d-none d-md-table-cell"><a class="link-light text-decoration-none" href="@Model.SortUrl("collages")">Колажі</a></th>
+            <th>Дії</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var a in Model.Items)
+        {
+            <tr>
+                <td class="small">
+                    <div class="text-nowrap">@a.CreatedAtUtc.ToString("dd.MM HH:mm")</div>
+                    <div class="text-muted text-break">@a.CreatorLogin</div>
+                </td>
+                <td class="small d-none d-md-table-cell">
+                    <div class="text-nowrap">@a.UpdatedAtUtc.ToString("dd.MM HH:mm")</div>
+                    <div class="text-muted text-break">@a.LastUpdatedLogin</div>
+                </td>
+                <td>@a.Title</td>
+                <td class="d-none d-md-table-cell">@CountryLabels.Labels[a.Country]</td>
+                <td class="d-none d-md-table-cell">@a.CollageCount</td>
+                <td>
+                    @if (a.CanEdit)
+                    {
+                        <a asp-page="Edit" asp-route-id="@a.Id" class="text-decoration-none" title="Редагувати">✏️</a>
+                    }
+                    @if (a.CanEdit)
+                    {
+                        <text> </text>
+                        <form method="post" asp-page-handler="Delete" class="d-inline" onsubmit="return confirm('Видалити анонс?');">
+                            <input type="hidden" name="id" value="@a.Id" />
+                            <input type="hidden" name="sort" value="@Model.Sort" />
+                            <input type="hidden" name="dir" value="@Model.Dir" />
+                            <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                            <button type="submit" class="btn btn-link btn-sm p-0 align-baseline border-0" title="Видалити">🗑️</button>
+                        </form>
+                    }
+                    @if (Model.IsStaff && a.CollageCount > 0)
+                    {
+                        <div class="mt-1 small">
+                            @if (string.IsNullOrEmpty(a.TelegraphUrl1))
+                            {
+                                <form method="post" asp-page-handler="Telegraph1" class="d-inline">
+                                    <input type="hidden" name="id" value="@a.Id" />
+                                    <input type="hidden" name="sort" value="@Model.Sort" />
+                                    <input type="hidden" name="dir" value="@Model.Dir" />
+                                    <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" title="Створити сторінку Telegraf (валюта)">
+                                        <partial name="_TelegraphPageIcon" />
+                                        <span>валюта</span>
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a href="@a.TelegraphUrl1" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (валюта)">
+                                    <partial name="_TelegraphPageIcon" />
+                                    <span>валюта</span>
+                                </a>
+                            }
+                            @if (string.IsNullOrEmpty(a.TelegraphUrl2))
+                            {
+                                <form method="post" asp-page-handler="Telegraph2" class="d-inline">
+                                    <input type="hidden" name="id" value="@a.Id" />
+                                    <input type="hidden" name="sort" value="@Model.Sort" />
+                                    <input type="hidden" name="dir" value="@Model.Dir" />
+                                    <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1" title="Створити сторінку Telegraf (грн)">
+                                        <partial name="_TelegraphPageIcon" />
+                                        <span>грн</span>
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a href="@a.TelegraphUrl2" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (грн)">
+                                    <partial name="_TelegraphPageIcon" />
+                                    <span>грн</span>
+                                </a>
+                            }
+                            <form method="post" asp-page-handler="SendTelegram1" class="d-inline">
+                                <input type="hidden" name="id" value="@a.Id" />
+                                <input type="hidden" name="sort" value="@Model.Sort" />
+                                <input type="hidden" name="dir" value="@Model.Dir" />
+                                <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                                <button type="submit" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" title="Надіслати в Telegram (варіант валюта)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                                    <span>валюта</span>
+                                </button>
+                            </form>
+                            <form method="post" asp-page-handler="SendTelegram2" class="d-inline">
+                                <input type="hidden" name="id" value="@a.Id" />
+                                <input type="hidden" name="sort" value="@Model.Sort" />
+                                <input type="hidden" name="dir" value="@Model.Dir" />
+                                <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                                <button type="submit" class="btn btn-outline-primary btn-sm d-inline-flex align-items-center gap-1" title="Надіслати в Telegram (варіант грн)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+                                    <span>грн</span>
+                                </button>
+                            </form>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

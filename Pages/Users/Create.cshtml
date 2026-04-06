@@ -1,0 +1,27 @@
+@page
+@model Announcement.Pages.Users.CreateModel
+@{
+    ViewData["Title"] = "Новий користувач";
+}
+
+<h1>Новий користувач</h1>
+<form method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="mb-2">
+        <label asp-for="Input.UserName" class="form-label"></label>
+        <input asp-for="Input.UserName" class="form-control" autocomplete="off" />
+    </div>
+    <div class="mb-2">
+        <label asp-for="Input.Password" class="form-label"></label>
+        <input asp-for="Input.Password" class="form-control" autocomplete="new-password" />
+    </div>
+    <div class="mb-2">
+        <label asp-for="Input.Role" class="form-label"></label>
+        <select asp-for="Input.Role" asp-items="Model.RoleOptions" class="form-select"></select>
+    </div>
+    <button type="submit" class="btn btn-primary">Створити</button>
+    <a class="btn btn-secondary" asp-page="Index">Назад</a>
+</form>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

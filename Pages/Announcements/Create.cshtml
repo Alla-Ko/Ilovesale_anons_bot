@@ -1,0 +1,24 @@
+@page
+@model Announcement.Pages.Announcements.CreateModel
+@{
+    ViewData["Title"] = "Новий анонс";
+}
+
+<h1>Новий анонс</h1>
+<p class="text-muted small">Після збереження відкриється редагування — там можна додати колажі.</p>
+<form method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="mb-2">
+        <label asp-for="Input.Title" class="form-label"></label>
+        <input asp-for="Input.Title" class="form-control" />
+    </div>
+    <div class="mb-2">
+        <label asp-for="Input.Country" class="form-label"></label>
+        <select asp-for="Input.Country" asp-items="Model.CountryOptions" class="form-select"></select>
+    </div>
+    <button type="submit" class="btn btn-orange">Зберегти</button>
+    <a class="btn btn-secondary" asp-page="Index">Назад</a>
+</form>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

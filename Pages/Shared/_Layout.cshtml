@@ -1,0 +1,39 @@
+﻿<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] — Анонси</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="bg-light">
+    <header class="app-header mb-3">
+        <nav class="navbar navbar-expand navbar-dark py-2">
+            <div class="container-fluid px-2">
+                <a class="navbar-brand text-white" asp-page="/Announcements/Index">Анонси</a>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <ul class="navbar-nav me-auto small">
+                        <li class="nav-item"><a class="nav-link text-white" asp-page="/Announcements/Index">Список</a></li>
+                        @if (User.IsInRole("Admin"))
+                        {
+                            <li class="nav-item"><a class="nav-link text-white" asp-page="/Users/Index">Користувачі</a></li>
+                        }
+                    </ul>
+                    <form method="post" asp-page="/Account/Logout" class="d-inline-flex align-items-center gap-2">
+                        <span class="navbar-text small text-white-50">@User.Identity.Name</span>
+                        <button type="submit" class="btn btn-sm btn-orange">Вийти</button>
+                    </form>
+                }
+            </div>
+        </nav>
+    </header>
+    <main class="container-fluid px-2 pb-4">
+        @RenderBody()
+    </main>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

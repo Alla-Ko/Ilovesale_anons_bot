@@ -1,0 +1,88 @@
+@page "{id}"
+@model Announcement.Pages.Announcements.EditModel
+@using Announcement.Models
+@{
+    ViewData["Title"] = "Редагування анонса";
+}
+
+<h1>Редагування</h1>
+<p class="text-muted small">Після збереження посилання на Telegraf скидаються. Підписи зберігають переноси рядків (textarea).</p>
+
+<form method="post" enctype="multipart/form-data" id="announcement-form" class="announcement-edit">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <input type="hidden" asp-for="Input.Id" />
+
+    <div class="mb-2">
+        <label asp-for="Input.Title" class="form-label"></label>
+        <input asp-for="Input.Title" class="form-control" required />
+    </div>
+    <div class="mb-3">
+        <label asp-for="Input.Country" class="form-label"></label>
+        <select asp-for="Input.Country" asp-items="Model.CountryOptions" class="form-select"></select>
+    </div>
+
+    <h2 class="h6">Колажі</h2>
+    <div id="collage-rows" class="collage-rows"></div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+        <label class="mb-0">Варіант 1 — пусті рядки:</label>
+        <input type="number" min="1" max="40" value="1" id="add-row-count" class="form-control form-control-sm" style="width:5rem;" />
+        <button type="button" class="btn btn-sm btn-outline-primary" id="btn-add-rows">Додати рядки</button>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <label class="mb-0">Варіант 2 — з файлу:</label>
+        <input type="file" id="bulk-media-input" class="d-none" multiple accept="image/*,video/*" />
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-bulk-media">Додати медіа (кілька файлів)</button>
+        <span class="small text-muted">Під кожен файл створюється рядок.</span>
+    </div>
+
+    <button type="submit" class="btn btn-orange">Зберегти анонс</button>
+    <a class="btn btn-secondary" asp-page="Index">До списку</a>
+</form>
+
+<template id="tpl-collage-row">
+        <div class="collage-row collage-row-surface card mb-2" draggable="true">
+            <div class="card-body p-2">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-1 mb-1">
+                    <span class="drag-handle user-select-none" title="Перетягнути за ручку">☰</span>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary btn-move-up" title="Вгору">↑</button>
+                        <button type="button" class="btn btn-outline-secondary btn-move-down" title="Вниз">↓</button>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto btn-remove-row">Видалити рядок</button>
+                </div>
+                <input type="hidden" data-field="id" value="" />
+                <input type="hidden" data-field="keep" value="" />
+                <div class="drop-zone border rounded p-2 mb-2 text-center" data-dropzone tabindex="0" title="Фокус для вставки з буфера (Ctrl+V)">
+                    <div class="small text-muted mb-1">Вставте скопійоване зображення (Ctrl+V) або затягніть сюди файл</div>
+                    <input type="file" class="form-control form-control-sm file-input" accept="image/*,video/*" />
+                    <div class="preview mt-1 small"></div>
+                    <button type="button" class="btn btn-sm btn-link p-0 btn-clear-media" hidden>Видалити медіа</button>
+                </div>
+                <div class="mb-1">
+                    <label class="form-label small mb-0">Валютний анонс</label>
+                    <div class="input-group input-group-sm">
+                        <textarea class="form-control cap1" rows="3" placeholder="Текст з переносами рядків"></textarea>
+                        <button type="button" class="btn btn-outline-secondary btn-paste-cap" data-cap="1" title="Вставити з буфера">📋</button>
+                    </div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label small mb-0">Гривневий анонс</label>
+                    <div class="input-group input-group-sm">
+                        <textarea class="form-control cap2" rows="3"></textarea>
+                        <button type="button" class="btn btn-outline-secondary btn-paste-cap" data-cap="2" title="Вставити з буфера">📋</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+<script>
+    window.__initialCollages = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+        Model.Input.Collages.Select(c => new { id = c.Id, keep = c.KeepMediaUrl, cap1 = c.Caption1 ?? "", cap2 = c.Caption2 ?? "" })));
+</script>
+<script src="~/js/announcement-edit.js" asp-append-version="true"></script>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

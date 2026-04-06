@@ -1,0 +1,27 @@
+@page "{id}"
+@model Announcement.Pages.Users.EditModel
+@{
+    ViewData["Title"] = "Редагування користувача";
+}
+
+<h1>Редагування користувача</h1>
+<form method="post" asp-route-id="@RouteData.Values["id"]">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="mb-2">
+        <label asp-for="Input.UserName" class="form-label"></label>
+        <input asp-for="Input.UserName" class="form-control" />
+    </div>
+    <div class="mb-2">
+        <label asp-for="Input.NewPassword" class="form-label"></label>
+        <input asp-for="Input.NewPassword" class="form-control" autocomplete="new-password" />
+    </div>
+    <div class="mb-2">
+        <label asp-for="Input.Role" class="form-label"></label>
+        <select asp-for="Input.Role" asp-items="Model.RoleOptions" class="form-select"></select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-orange">Зберегти</button>
+    <a class="btn btn-secondary" asp-page="Index">Назад</a>
+</form>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

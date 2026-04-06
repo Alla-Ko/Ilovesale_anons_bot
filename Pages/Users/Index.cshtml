@@ -1,0 +1,36 @@
+@page
+@model Announcement.Pages.Users.IndexModel
+@{
+    ViewData["Title"] = "Користувачі";
+}
+
+<h1>Користувачі</h1>
+<p><a class="btn btn-sm btn-orange" asp-page="Create">Новий користувач</a></p>
+
+<table class="table table-sm table-bordered table-app">
+    <thead class="table-dark">
+        <tr>
+            <th><a class="link-light text-decoration-none" href="@Model.SortUrl("username")">Логін</a></th>
+            <th><a class="link-light text-decoration-none" href="@Model.SortUrl("created")">Створен</a></th>
+            <th><a class="link-light text-decoration-none" href="@Model.SortUrl("updated")">Змінено</a></th>
+            <th>Роль</th>
+            <th>Дії</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var u in Model.Users)
+        {
+            <tr>
+                <td>@u.UserName</td>
+                <td class="text-nowrap small">@u.CreatedAtUtc.ToString("dd.MM HH:mm")</td>
+                <td class="text-nowrap small">@u.UpdatedAtUtc.ToString("dd.MM HH:mm")</td>
+                <td>@u.Roles</td>
+                <td>
+                    <a asp-page="Edit" asp-route-id="@u.Id">Редагувати</a>
+                    |
+                    <a asp-page="Delete" asp-route-id="@u.Id">Видалити</a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

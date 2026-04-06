@@ -1,0 +1,13 @@
+@page "{id}"
+@model Announcement.Pages.Users.DeleteModel
+@{
+    ViewData["Title"] = "Видалити користувача";
+}
+
+<h1>Видалити</h1>
+<p>Видалити користувача <strong>@Model.UserName</strong>?</p>
+<form method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <button type="submit" class="btn btn-danger">Так, видалити</button>
+    <a class="btn btn-secondary" asp-page="Index">Скасувати</a>
+</form>
