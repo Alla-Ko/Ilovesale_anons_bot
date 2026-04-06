@@ -1,0 +1,13 @@
+# Blueprint Render: Web Service з Docker.
+# У Dashboard задайте ConnectionStrings__DefaultConnection на вже існуючу хмарну БД та інші секрети.
+
+services:
+  - type: web
+    name: announcement
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production

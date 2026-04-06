@@ -1,0 +1,13 @@
+**/.git
+**/.vs
+**/bin
+**/obj
+**/.env
+**/.env.*
+!**/.env.example
+**/*.user
+**/Thumbs.db
+**/.DS_Store
+**/wwwroot/lib/**/dist/**/*.map
+**/_verifybuild
+**/_vb

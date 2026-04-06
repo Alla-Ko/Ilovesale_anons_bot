@@ -18,6 +18,11 @@ if (File.Exists(envPath))
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render / Docker: слухати порт із змінної PORT (інакше контейнер не приймає трафік).
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
