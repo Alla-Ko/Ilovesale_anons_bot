@@ -50,7 +50,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     private void TouchAnnouncementWhenCollageChanged(DateTime utc)
     {
-        foreach (var entry in ChangeTracker.Entries<CollageEntity>())
+        // .ToList() — фіксуємо колекцію до ітерації,
+        // бо всередині циклу EF може змінювати ChangeTracker
+        foreach (var entry in ChangeTracker.Entries<CollageEntity>().ToList())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
                 continue;
@@ -61,6 +63,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
             var parentEntry = ChangeTracker.Entries<AnnouncementEntity>()
                 .FirstOrDefault(e => e.Entity.Id == announcementId);
+
             if (parentEntry == null || parentEntry.State == EntityState.Deleted)
                 continue;
 
