@@ -6,6 +6,19 @@
 @{
     ViewData["Title"] = "Анонси";
     static string Rate(decimal? value) => value.HasValue ? value.Value.ToString("0.####", CultureInfo.InvariantCulture) : "--";
+    static string[] ParseTelegraphUrls(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return Array.Empty<string>();
+
+        var normalized = raw
+            .Replace("%3B", ";", StringComparison.OrdinalIgnoreCase)
+            .Replace("&semi;", ";", StringComparison.OrdinalIgnoreCase)
+            .Replace('；', ';');
+
+        return normalized
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
 }
 
 <h1 class="mb-2">Анонси</h1>
@@ -150,10 +163,27 @@
                             }
                             else
                             {
-                                <a href="@a.TelegraphUrl1" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (валюта)">
-                                    <partial name="_TelegraphPageIcon" />
-                                    <span>валюта</span>
-                                </a>
+                                var telegraphUrls1 = ParseTelegraphUrls(a.TelegraphUrl1);
+                                if (telegraphUrls1.Length <= 1)
+                                {
+                                    <a href="@telegraphUrls1[0]" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (валюта)">
+                                        <partial name="_TelegraphPageIcon" />
+                                        <span>валюта</span>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="d-inline-flex align-items-center gap-1">
+                                        @for (var i = 0; i < telegraphUrls1.Length; i++)
+                                        {
+                                            var partIdx = i + 1;
+                                            <a href="@telegraphUrls1[i]" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (валюта), частина @partIdx">
+                                                <partial name="_TelegraphPageIcon" />
+                                                <span>валюта @partIdx</span>
+                                            </a>
+                                        }
+                                    </span>
+                                }
                             }
                             @if (string.IsNullOrEmpty(a.TelegraphUrl2))
                             {
@@ -170,10 +200,27 @@
                             }
                             else
                             {
-                                <a href="@a.TelegraphUrl2" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (грн)">
-                                    <partial name="_TelegraphPageIcon" />
-                                    <span>грн</span>
-                                </a>
+                                var telegraphUrls2 = ParseTelegraphUrls(a.TelegraphUrl2);
+                                if (telegraphUrls2.Length <= 1)
+                                {
+                                    <a href="@telegraphUrls2[0]" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (грн)">
+                                        <partial name="_TelegraphPageIcon" />
+                                        <span>грн</span>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="d-inline-flex align-items-center gap-1">
+                                        @for (var i = 0; i < telegraphUrls2.Length; i++)
+                                        {
+                                            var partIdx = i + 1;
+                                            <a href="@telegraphUrls2[i]" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 text-decoration-none" title="Відкрити Telegraf (грн), частина @partIdx">
+                                                <partial name="_TelegraphPageIcon" />
+                                                <span>грн @partIdx</span>
+                                            </a>
+                                        }
+                                    </span>
+                                }
                             }
                             <form method="post" asp-page-handler="SendTelegram1" class="d-inline">
                                 <input type="hidden" name="id" value="@a.Id" />

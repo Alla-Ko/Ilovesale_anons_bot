@@ -36,9 +36,50 @@ public class TelegraphPageService : ITelegraphPageService
         }
 
         var ordered = announcement.Collages.OrderBy(c => c.SortOrder).ToList();
-        var nodes = new List<object>();
+        try
+        {
+            return await CreateSinglePageAsync(
+                token,
+                announcement.Title,
+                BuildNodes(ordered, variant),
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("CONTENT_TOO_BIG", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ordered.Count < 2)
+                throw;
 
-        foreach (var c in ordered)
+            var n = ordered.Count;
+            var mid = n / 2;
+
+            var firstPart = new List<CollageEntity> { ordered[0] };
+            for (var i = 1; i < mid; i++)
+                firstPart.Add(ordered[i]);
+
+            var secondPart = new List<CollageEntity> { ordered[0] };
+            for (var i = mid; i < n; i++)
+                secondPart.Add(ordered[i]);
+
+            var firstUrl = await CreateSinglePageAsync(
+                token,
+                $"{announcement.Title} (1/2)",
+                BuildNodes(firstPart, variant),
+                cancellationToken);
+
+            var secondUrl = await CreateSinglePageAsync(
+                token,
+                $"{announcement.Title} (2/2)",
+                BuildNodes(secondPart, variant),
+                cancellationToken);
+
+            return $"{firstUrl};{secondUrl}";
+        }
+    }
+
+    private List<object> BuildNodes(List<CollageEntity> collages, int variant)
+    {
+        var nodes = new List<object>();
+        foreach (var c in collages)
         {
             if (c.MediaType == MediaType.Photo)
                 nodes.Add(new { tag = "img", attrs = new { src = c.MediaUrl } });
@@ -50,11 +91,20 @@ public class TelegraphPageService : ITelegraphPageService
                 nodes.Add(paragraph);
         }
 
+        return nodes;
+    }
+
+    private async Task<string> CreateSinglePageAsync(
+        string token,
+        string title,
+        List<object> nodes,
+        CancellationToken cancellationToken)
+    {
         var contentJson = JsonSerializer.Serialize(nodes);
         var body = new Dictionary<string, string>
         {
             ["access_token"] = token,
-            ["title"] = announcement.Title,
+            ["title"] = title,
             ["content"] = contentJson,
             ["return_content"] = "false"
         };
