@@ -73,8 +73,9 @@ public class TelegramChannelService : ITelegramChannelService
         {
             collageIndex++;
             var capRaw = variant == 1 ? c.Caption1 : c.Caption2;
+            var preparedCaption = CaptionPublishFormatter.PrepareForPublish(capRaw);
+            ValidateTelegramCaptionLength(preparedCaption, collageIndex);
             var captionHtml = _captions.FormatCaptionForTelegramHtml(capRaw);
-            captionHtml = TruncateTelegramHtmlCaption(captionHtml);
 
             if (c.MediaType == MediaType.Photo)
             {
@@ -197,49 +198,17 @@ public class TelegramChannelService : ITelegramChannelService
     }
 
     /// <summary>
-    /// Обрізає HTML-підпис до ліміту Telegram для медіа (1024 символи).
-    /// Не можна різати рядок посередині тега — інакше API: «can't parse entities» (часто біля offset ~1021).
+    /// Явно валідовує довжину підпису. Якщо перевищено ліміт Telegram, кидає помилку,
+    /// щоб показати користувачу зрозуміле повідомлення, а не тихо обрізати текст.
     /// </summary>
-    private static string? TruncateTelegramHtmlCaption(string? html)
+    private static void ValidateTelegramCaptionLength(string? plainText, int collageIndex)
     {
-        if (string.IsNullOrEmpty(html))
-            return null;
-        if (html.Length <= TelegramCaptionMaxLength)
-            return html;
+        if (string.IsNullOrEmpty(plainText))
+            return;
+        if (plainText.Length <= TelegramCaptionMaxLength)
+            return;
 
-        var s = html[..TelegramCaptionMaxLength];
-        s = TrimBrokenTelegramHtmlSuffix(s);
-        return string.IsNullOrEmpty(s) ? null : s;
-    }
-
-    /// <summary>Відкидає незавершений тег або неповну HTML-entity на кінці після жорсткого обрізання.</summary>
-    private static string TrimBrokenTelegramHtmlSuffix(string s)
-    {
-        while (s.Length > 0)
-        {
-            var lastGt = s.LastIndexOf('>');
-            var lastLt = s.LastIndexOf('<');
-            if (lastLt > lastGt)
-            {
-                s = s[..lastLt];
-                continue;
-            }
-
-            var amp = s.LastIndexOf('&');
-            if (amp >= 0)
-            {
-                var tail = s[amp..];
-                var semi = tail.IndexOf(';');
-                if (semi < 0 || semi > 32)
-                {
-                    s = s[..amp];
-                    continue;
-                }
-            }
-
-            break;
-        }
-
-        return s;
+        throw new InvalidOperationException(
+            $"У колажі №{collageIndex} довжина підпису {plainText.Length} символів, максимально допустиме значення {TelegramCaptionMaxLength}.");
     }
 }

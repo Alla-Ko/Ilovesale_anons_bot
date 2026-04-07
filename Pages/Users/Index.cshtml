@@ -1,5 +1,6 @@
 @page
 @model Announcement.Pages.Users.IndexModel
+@using Announcement.Extensions
 @{
     ViewData["Title"] = "Користувачі";
 }
@@ -22,8 +23,8 @@
         {
             <tr>
                 <td>@u.UserName</td>
-                <td class="text-nowrap small">@u.CreatedAtUtc.ToString("dd.MM HH:mm")</td>
-                <td class="text-nowrap small">@u.UpdatedAtUtc.ToString("dd.MM HH:mm")</td>
+                <td class="text-nowrap small">@u.CreatedAtUtc.ToKyiv().ToString("dd.MM HH:mm")</td>
+                <td class="text-nowrap small">@u.UpdatedAtUtc.ToKyiv().ToString("dd.MM HH:mm")</td>
                 <td>@u.Roles</td>
                 <td>
                     <a asp-page="Edit" asp-route-id="@u.Id">Редагувати</a>

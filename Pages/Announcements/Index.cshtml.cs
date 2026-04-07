@@ -7,6 +7,8 @@ using Announcement.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Announcement.Pages.Announcements;
 
@@ -17,15 +19,21 @@ public class IndexModel : PageModel
     private readonly ApplicationDbContext _db;
     private readonly ITelegraphPageService _telegraph;
     private readonly ITelegramChannelService _telegram;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<IndexModel> _logger;
 
     public IndexModel(
         ApplicationDbContext db,
         ITelegraphPageService telegraph,
-        ITelegramChannelService telegram)
+        ITelegramChannelService telegram,
+        IHttpClientFactory httpClientFactory,
+        ILogger<IndexModel> logger)
     {
         _db = db;
         _telegraph = telegraph;
         _telegram = telegram;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     [BindProperty(SupportsGet = true)]
@@ -37,6 +45,9 @@ public class IndexModel : PageModel
     /// <summary>Фільтр за календарним днем створення (UTC, без часу).</summary>
     [BindProperty(SupportsGet = true)]
     public DateOnly? CreatedDay { get; set; }
+    
+    [TempData]
+    public string? ErrorMessage { get; set; }
 
     public IList<Row> Items { get; set; } = new List<Row>();
 
@@ -44,6 +55,8 @@ public class IndexModel : PageModel
     public IReadOnlyList<DateOnly> AvailableDays { get; private set; } = Array.Empty<DateOnly>();
 
     public bool IsStaff { get; set; }
+    public MonoRatesView? MonoRates { get; private set; }
+    public PrivatRatesView? PrivatRates { get; private set; }
 
     public string FormatDayLabel(DateOnly day) =>
         day.ToDateTime(TimeOnly.MinValue).ToString("d MMMM", UkCulture);
@@ -61,6 +74,42 @@ public class IndexModel : PageModel
         public string? TelegraphUrl1 { get; set; }
         public string? TelegraphUrl2 { get; set; }
         public bool CanEdit { get; set; }
+    }
+
+    public class MonoRatesView
+    {
+        public decimal? UsdBuy { get; set; }
+        public decimal? UsdSell { get; set; }
+        public decimal? EurBuy { get; set; }
+        public decimal? EurSell { get; set; }
+        public decimal? PlnBuy { get; set; }
+        public decimal? PlnSell { get; set; }
+        public decimal? GbpBuy { get; set; }
+        public decimal? GbpSell { get; set; }
+    }
+
+    public class PrivatRatesView
+    {
+        public decimal? UsdBuy { get; set; }
+        public decimal? UsdSell { get; set; }
+        public decimal? EurBuy { get; set; }
+        public decimal? EurSell { get; set; }
+    }
+
+    private sealed class MonoRateItem
+    {
+        public int CurrencyCodeA { get; set; }
+        public int CurrencyCodeB { get; set; }
+        public decimal? RateBuy { get; set; }
+        public decimal? RateSell { get; set; }
+        public decimal? RateCross { get; set; }
+    }
+
+    private sealed class PrivatRateItem
+    {
+        public string? Ccy { get; set; }
+        public string? Buy { get; set; }
+        public string? Sale { get; set; }
     }
 
     public string SortUrl(string column)
@@ -87,6 +136,8 @@ public class IndexModel : PageModel
     {
         Sort ??= "updated";
         Dir ??= "desc";
+        var monoRatesTask = LoadMonoRatesAsync();
+        var privatRatesTask = LoadPrivatRatesAsync();
 
         IsStaff = User.IsInRole(AppRoles.Admin) || User.IsInRole(AppRoles.Moderator);
         var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -151,6 +202,100 @@ public class IndexModel : PageModel
                 CanEdit = IsStaff || a.CreatorId == uid
             });
         }
+
+        MonoRates = await monoRatesTask;
+        PrivatRates = await privatRatesTask;
+    }
+
+    private async Task<MonoRatesView?> LoadMonoRatesAsync()
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(4);
+            using var resp = await client.GetAsync("https://api.monobank.ua/bank/currency");
+            if (!resp.IsSuccessStatusCode)
+                return null;
+
+            await using var stream = await resp.Content.ReadAsStreamAsync();
+            var data = await JsonSerializer.DeserializeAsync<List<MonoRateItem>>(
+                stream,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (data == null || data.Count == 0)
+                return null;
+
+            MonoRateItem? Pick(int codeA) =>
+                data.FirstOrDefault(x => x.CurrencyCodeA == codeA && x.CurrencyCodeB == 980);
+
+            var usd = Pick(840);
+            var eur = Pick(978);
+            var pln = Pick(985);
+            var gbp = Pick(826);
+
+            var result = new MonoRatesView
+            {
+                UsdBuy = usd?.RateBuy,
+                UsdSell = usd?.RateSell ?? usd?.RateCross,
+                EurBuy = eur?.RateBuy,
+                EurSell = eur?.RateSell ?? eur?.RateCross,
+                PlnBuy = pln?.RateBuy,
+                PlnSell = pln?.RateSell ?? pln?.RateCross,
+                GbpBuy = gbp?.RateBuy,
+                GbpSell = gbp?.RateSell ?? gbp?.RateCross
+            };
+
+            if (result.UsdBuy is null && result.UsdSell is null &&
+                result.EurBuy is null && result.EurSell is null &&
+                result.PlnBuy is null && result.PlnSell is null &&
+                result.GbpBuy is null && result.GbpSell is null)
+                return null;
+
+            return result;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<PrivatRatesView?> LoadPrivatRatesAsync()
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(4);
+            using var resp = await client.GetAsync("https://api.privatbank.ua/p24api/pubinfo?json&exchange&coursid=11");
+            if (!resp.IsSuccessStatusCode)
+                return null;
+
+            await using var stream = await resp.Content.ReadAsStreamAsync();
+            var data = await JsonSerializer.DeserializeAsync<List<PrivatRateItem>>(
+                stream,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (data == null || data.Count == 0)
+                return null;
+
+            static decimal? ParseDecimal(string? value) =>
+                decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
+
+            PrivatRateItem? Pick(string ccy) =>
+                data.FirstOrDefault(x => string.Equals(x.Ccy, ccy, StringComparison.OrdinalIgnoreCase));
+
+            var usd = Pick("USD");
+            var eur = Pick("EUR");
+
+            return new PrivatRatesView
+            {
+                UsdBuy = ParseDecimal(usd?.Buy),
+                UsdSell = ParseDecimal(usd?.Sale),
+                EurBuy = ParseDecimal(eur?.Buy),
+                EurSell = ParseDecimal(eur?.Sale)
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<AnnouncementEntity?> LoadAuthorizedAsync(int id)
@@ -185,12 +330,21 @@ public class IndexModel : PageModel
         if (entity.Collages.Count == 0)
             return BadRequest();
 
-        var url = await _telegraph.CreatePageAsync(entity, 1);
-        entity.TelegraphUrl1 = url;
-        var staffId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!string.IsNullOrEmpty(staffId))
-            entity.LastUpdatedById = staffId;
-        await _db.SaveChangesAsync();
+        try
+        {
+            var url = await _telegraph.CreatePageAsync(entity, 1);
+            entity.TelegraphUrl1 = url;
+            var staffId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(staffId))
+                entity.LastUpdatedById = staffId;
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Помилка створення Telegraf (валюта) для announcementId={AnnouncementId}", id);
+            ErrorMessage = $"Помилка Telegraf (валюта): {ex.Message}";
+        }
+
         return RedirectToIndex();
     }
 
@@ -205,12 +359,21 @@ public class IndexModel : PageModel
         if (entity.Collages.Count == 0)
             return BadRequest();
 
-        var url = await _telegraph.CreatePageAsync(entity, 2);
-        entity.TelegraphUrl2 = url;
-        var staffId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!string.IsNullOrEmpty(staffId))
-            entity.LastUpdatedById = staffId;
-        await _db.SaveChangesAsync();
+        try
+        {
+            var url = await _telegraph.CreatePageAsync(entity, 2);
+            entity.TelegraphUrl2 = url;
+            var staffId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(staffId))
+                entity.LastUpdatedById = staffId;
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Помилка створення Telegraf (грн) для announcementId={AnnouncementId}", id);
+            ErrorMessage = $"Помилка Telegraf (грн): {ex.Message}";
+        }
+
         return RedirectToIndex();
     }
 
@@ -225,7 +388,16 @@ public class IndexModel : PageModel
         if (entity.Collages.Count == 0)
             return BadRequest();
 
-        await _telegram.SendAnnouncementVariantAsync(entity, 1);
+        try
+        {
+            await _telegram.SendAnnouncementVariantAsync(entity, 1);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Помилка надсилання в Telegram (валюта) для announcementId={AnnouncementId}", id);
+            ErrorMessage = $"Помилка Telegram (валюта): {ex.Message}";
+        }
+
         return RedirectToIndex();
     }
 
@@ -240,7 +412,16 @@ public class IndexModel : PageModel
         if (entity.Collages.Count == 0)
             return BadRequest();
 
-        await _telegram.SendAnnouncementVariantAsync(entity, 2);
+        try
+        {
+            await _telegram.SendAnnouncementVariantAsync(entity, 2);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Помилка надсилання в Telegram (грн) для announcementId={AnnouncementId}", id);
+            ErrorMessage = $"Помилка Telegram (грн): {ex.Message}";
+        }
+
         return RedirectToIndex();
     }
 

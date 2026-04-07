@@ -1,44 +1,94 @@
 @page
 @model Announcement.Pages.Announcements.IndexModel
 @using Announcement.Models
+@using Announcement.Extensions
 @using System.Globalization
 @{
     ViewData["Title"] = "Анонси";
+    static string Rate(decimal? value) => value.HasValue ? value.Value.ToString("0.####", CultureInfo.InvariantCulture) : "--";
 }
 
-<h1>Анонси</h1>
+<h1 class="mb-2">Анонси</h1>
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger py-2 px-3 mb-2" role="alert">
+        @Model.ErrorMessage
+    </div>
+}
+@if (Model.MonoRates is not null)
+{
+    <div class="d-md-none border rounded p-2 small bg-light mb-2">
+        <div class="fw-bold">Курси MonoBank</div>
+        <div>USD: @Rate(Model.MonoRates.UsdBuy) / @Rate(Model.MonoRates.UsdSell)</div>
+        <div>EUR: @Rate(Model.MonoRates.EurBuy) / @Rate(Model.MonoRates.EurSell)</div>
+        <div>PLN: @Rate(Model.MonoRates.PlnBuy) / @Rate(Model.MonoRates.PlnSell)</div>
+        <div>GBP: @Rate(Model.MonoRates.GbpBuy) / @Rate(Model.MonoRates.GbpSell)</div>
+    </div>
+}
+@if (Model.PrivatRates is not null)
+{
+    <div class="d-md-none border rounded p-2 small bg-light mb-2">
+        <div class="fw-bold">Курси ПриватБанк</div>
+        <div>USD: @Rate(Model.PrivatRates.UsdBuy) / @Rate(Model.PrivatRates.UsdSell)</div>
+        <div>EUR: @Rate(Model.PrivatRates.EurBuy) / @Rate(Model.PrivatRates.EurSell)</div>
+    </div>
+}
 
-<form method="get" class="mb-3" style="max-width: 22rem;">
-    <input type="hidden" name="Sort" value="@Model.Sort" />
-    <input type="hidden" name="Dir" value="@Model.Dir" />
-    <label for="created-day-select" class="form-label small mb-1">Показати анонси</label>
-    <select id="created-day-select" name="CreatedDay" class="form-select form-select-sm" onchange="this.form.submit()">
-        @if (!Model.CreatedDay.HasValue)
-        {
-            <option value="" selected>Всі анонси</option>
-        }
-        else
-        {
-            <option value="">Всі анонси</option>
-        }
-        @foreach (var day in Model.AvailableDays)
-        {
-            var v = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            if (Model.CreatedDay == day)
+<div class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-2 mb-3">
+    <div class="d-flex flex-column flex-md-row align-items-md-end gap-2">
+        <form method="get" style="max-width: 22rem;">
+        <input type="hidden" name="Sort" value="@Model.Sort" />
+        <input type="hidden" name="Dir" value="@Model.Dir" />
+        <label for="created-day-select" class="form-label small mb-1">Показати анонси</label>
+        <select id="created-day-select" name="CreatedDay" class="form-select form-select-sm" onchange="this.form.submit()">
+            @if (!Model.CreatedDay.HasValue)
             {
-                <option value="@v" selected>@Model.FormatDayLabel(day)</option>
+                <option value="" selected>Всі анонси</option>
             }
             else
             {
-                <option value="@v">@Model.FormatDayLabel(day)</option>
+                <option value="">Всі анонси</option>
             }
-        }
-    </select>
-</form>
-
-<p>
-    <a class="btn btn-sm btn-orange" asp-page="Create">Новий анонс</a>
-</p>
+            @foreach (var day in Model.AvailableDays)
+            {
+                var v = day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+                if (Model.CreatedDay == day)
+                {
+                    <option value="@v" selected>@Model.FormatDayLabel(day)</option>
+                }
+                else
+                {
+                    <option value="@v">@Model.FormatDayLabel(day)</option>
+                }
+            }
+        </select>
+        </form>
+        <a class="btn btn-sm btn-orange align-self-start align-self-md-end" asp-page="Create">Новий анонс</a>
+    </div>
+    @if (Model.MonoRates is not null || Model.PrivatRates is not null)
+    {
+        <div class="d-none d-md-flex flex-row gap-2">
+            @if (Model.MonoRates is not null)
+            {
+                <div class="border rounded p-2 small bg-light">
+                    <div class="fw-bold">Курси MonoBank</div>
+                    <div>USD: @Rate(Model.MonoRates.UsdBuy) / @Rate(Model.MonoRates.UsdSell)</div>
+                    <div>EUR: @Rate(Model.MonoRates.EurBuy) / @Rate(Model.MonoRates.EurSell)</div>
+                    <div>PLN: @Rate(Model.MonoRates.PlnBuy) / @Rate(Model.MonoRates.PlnSell)</div>
+                    <div>GBP: @Rate(Model.MonoRates.GbpBuy) / @Rate(Model.MonoRates.GbpSell)</div>
+                </div>
+            }
+            @if (Model.PrivatRates is not null)
+            {
+                <div class="border rounded p-2 small bg-light">
+                    <div class="fw-bold">Курси ПриватБанк</div>
+                    <div>USD: @Rate(Model.PrivatRates.UsdBuy) / @Rate(Model.PrivatRates.UsdSell)</div>
+                    <div>EUR: @Rate(Model.PrivatRates.EurBuy) / @Rate(Model.PrivatRates.EurSell)</div>
+                </div>
+            }
+        </div>
+    }
+</div>
 
 <table class="table table-sm table-bordered align-middle table-app table-announcements">
     <thead class="table-dark">
@@ -56,11 +106,11 @@
         {
             <tr>
                 <td class="small">
-                    <div class="text-nowrap">@a.CreatedAtUtc.ToString("dd.MM HH:mm")</div>
+                    <div class="text-nowrap">@a.CreatedAtUtc.ToKyiv().ToString("dd.MM HH:mm")</div>
                     <div class="text-muted text-break">@a.CreatorLogin</div>
                 </td>
                 <td class="small d-none d-md-table-cell">
-                    <div class="text-nowrap">@a.UpdatedAtUtc.ToString("dd.MM HH:mm")</div>
+                    <div class="text-nowrap">@a.UpdatedAtUtc.ToKyiv().ToString("dd.MM HH:mm")</div>
                     <div class="text-muted text-break">@a.LastUpdatedLogin</div>
                 </td>
                 <td>@a.Title</td>
