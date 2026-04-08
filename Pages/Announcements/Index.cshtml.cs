@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using System.IO.Compression;
 
 namespace Announcement.Pages.Announcements;
 
@@ -114,7 +115,7 @@ public class IndexModel : PageModel
 
     public string SortUrl(string column)
     {
-        Sort ??= "updated";
+        Sort ??= "created";
         Dir ??= "desc";
         var nextDir = string.Equals(Sort, column, StringComparison.OrdinalIgnoreCase)
             && string.Equals(Dir, "asc", StringComparison.OrdinalIgnoreCase)
@@ -125,7 +126,7 @@ public class IndexModel : PageModel
 
     public string HeaderIndicator(string column)
     {
-        Sort ??= "updated";
+        Sort ??= "created";
         Dir ??= "desc";
         if (!string.Equals(Sort, column, StringComparison.OrdinalIgnoreCase))
             return string.Empty;
@@ -134,7 +135,7 @@ public class IndexModel : PageModel
 
     public async Task OnGetAsync()
     {
-        Sort ??= "updated";
+        Sort ??= "created";
         Dir ??= "desc";
         var monoRatesTask = LoadMonoRatesAsync();
         var privatRatesTask = LoadPrivatRatesAsync();
@@ -181,7 +182,7 @@ public class IndexModel : PageModel
             "collages" => desc
                 ? query.OrderByDescending(a => a.Collages.Count)
                 : query.OrderBy(a => a.Collages.Count),
-            _ => desc ? query.OrderByDescending(a => a.UpdatedAtUtc) : query.OrderBy(a => a.UpdatedAtUtc)
+            _ => desc ? query.OrderByDescending(a => a.CreatedAtUtc) : query.OrderBy(a => a.CreatedAtUtc)
         };
 
         var list = await query.ToListAsync();
@@ -314,7 +315,7 @@ public class IndexModel : PageModel
 
     private IActionResult RedirectToIndex()
     {
-        Sort ??= "updated";
+        Sort ??= "created";
         Dir ??= "desc";
         return RedirectToPage("./Index", new { sort = Sort, dir = Dir, createdDay = CreatedDay });
     }
@@ -439,5 +440,54 @@ public class IndexModel : PageModel
         _db.Announcements.Remove(entity);
         await _db.SaveChangesAsync();
         return RedirectToIndex();
+    }
+
+    public async Task<IActionResult> OnPostDownloadArchiveAsync(int id)
+    {
+        var entity = await LoadAuthorizedAsync(id);
+        if (entity == null)
+            return NotFound();
+        if (entity.Collages.Count == 0)
+            return BadRequest();
+
+        try
+        {
+            var ordered = entity.Collages.OrderBy(c => c.SortOrder).ToList();
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            using var zipStream = new MemoryStream();
+            using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    var collage = ordered[i];
+                    using var resp = await client.GetAsync(collage.MediaUrl);
+                    resp.EnsureSuccessStatusCode();
+
+                    var ext = collage.MediaType == MediaType.Video ? ".mp4" : ".jpg";
+                    var fileName = $"collage-{i + 1:D2}{ext}";
+                    var entry = archive.CreateEntry(fileName, CompressionLevel.Fastest);
+
+                    await using var src = await resp.Content.ReadAsStreamAsync();
+                    await using var dst = entry.Open();
+                    await src.CopyToAsync(dst);
+                }
+            }
+
+            zipStream.Position = 0;
+            var safeTitle = string.Concat(entity.Title.Where(ch => !Path.GetInvalidFileNameChars().Contains(ch))).Trim();
+            if (string.IsNullOrWhiteSpace(safeTitle))
+                safeTitle = $"announcement-{entity.Id}";
+
+            var fileNameZip = $"{safeTitle}-media.zip";
+            return File(zipStream.ToArray(), "application/zip", fileNameZip);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Помилка завантаження архіву медіа для announcementId={AnnouncementId}", id);
+            ErrorMessage = $"Помилка створення архіву: {ex.Message}";
+            return RedirectToIndex();
+        }
     }
 }

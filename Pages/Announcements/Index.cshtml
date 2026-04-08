@@ -145,6 +145,17 @@
                             <button type="submit" class="btn btn-link btn-sm p-0 align-baseline border-0" title="Видалити">🗑️</button>
                         </form>
                     }
+                    @if (a.CollageCount > 0)
+                    {
+                        <text> </text>
+                        <form method="post" asp-page-handler="DownloadArchive" class="d-inline">
+                            <input type="hidden" name="id" value="@a.Id" />
+                            <input type="hidden" name="sort" value="@Model.Sort" />
+                            <input type="hidden" name="dir" value="@Model.Dir" />
+                            <input type="hidden" name="CreatedDay" value="@Model.CreatedDay?.ToString("yyyy-MM-dd")" />
+                            <button type="submit" class="btn btn-link btn-sm p-0 align-baseline border-0 text-decoration-none" title="Завантажити архів медіа">📦</button>
+                        </form>
+                    }
                     @if (Model.IsStaff && a.CollageCount > 0)
                     {
                         <div class="mt-1 small">
