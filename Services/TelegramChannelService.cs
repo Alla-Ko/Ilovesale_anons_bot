@@ -4,6 +4,7 @@ using Announcement.Models;
 using Announcement.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Headers;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -29,15 +30,18 @@ public class TelegramChannelService : ITelegramChannelService
     private readonly TelegramOptions _options;
     private readonly ICaptionPublishFormatter _captions;
     private readonly ILogger<TelegramChannelService> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public TelegramChannelService(
         IOptions<TelegramOptions> options,
         ICaptionPublishFormatter captions,
-        ILogger<TelegramChannelService> logger)
+        ILogger<TelegramChannelService> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _options = options.Value;
         _captions = captions;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task SendAnnouncementVariantAsync(AnnouncementEntity announcement, int variant, CancellationToken cancellationToken = default)
@@ -79,50 +83,19 @@ public class TelegramChannelService : ITelegramChannelService
 
             if (c.MediaType == MediaType.Photo)
             {
-                if (string.IsNullOrEmpty(captionHtml))
-                {
-                    await ExecuteWithFloodWaitRetryAsync(
-                        () => client.SendPhoto(chatId, InputFile.FromUri(c.MediaUrl), cancellationToken: cancellationToken),
-                        cancellationToken);
-                }
-                else
-                {
-                    await ExecuteWithFloodWaitRetryAsync(
-                        () => client.SendPhoto(
-                            chatId,
-                            InputFile.FromUri(c.MediaUrl),
-                            caption: captionHtml,
-                            parseMode: ParseMode.Html,
-                            cancellationToken: cancellationToken),
-                        cancellationToken);
-                }
+                await ExecuteWithFloodWaitRetryAsync(
+                    () => SendPhotoFromDownloadedContentAsync(client, chatId, c.MediaUrl, captionHtml, cancellationToken),
+                    cancellationToken);
             }
             else
             {
-                if (string.IsNullOrEmpty(captionHtml))
-                {
-                    await ExecuteWithFloodWaitRetryAsync(
-                        () => client.SendVideo(chatId, InputFile.FromUri(c.MediaUrl), cancellationToken: cancellationToken),
-                        cancellationToken);
-                }
-                else
-                {
-                    await ExecuteWithFloodWaitRetryAsync(
-                        () => client.SendVideo(
-                            chatId,
-                            InputFile.FromUri(c.MediaUrl),
-                            caption: captionHtml,
-                            parseMode: ParseMode.Html,
-                            cancellationToken: cancellationToken),
-                        cancellationToken);
-                }
+                await ExecuteWithFloodWaitRetryAsync(
+                    () => SendVideoFromDownloadedContentAsync(client, chatId, c.MediaUrl, captionHtml, cancellationToken),
+                    cancellationToken);
             }
 
             if (collageIndex % CollageBatchSize == 0 && collageIndex < ordered.Count)
             {
-                _logger.LogInformation(
-                    "Telegram: пауза {PauseMs} мс після {Count} колажів (усього {Total}).",
-                    PauseAfterCollageBatch.TotalMilliseconds, collageIndex, ordered.Count);
                 await Task.Delay(PauseAfterCollageBatch, cancellationToken);
             }
         }
@@ -154,10 +127,6 @@ public class TelegramChannelService : ITelegramChannelService
                 var seconds = ex.Parameters?.RetryAfter
                     ?? ParseRetryAfterSeconds(ex.Message)
                     ?? Math.Clamp(attempt * 2, 5, 120);
-
-                _logger.LogWarning(
-                    "Telegram FloodWait (429), пауза {Seconds} с перед наступною спробою ({Attempt}/{Max}).",
-                    seconds, attempt, MaxFloodWaitRetries);
 
                 await Task.Delay(TimeSpan.FromSeconds(seconds), cancellationToken);
             }
@@ -210,5 +179,164 @@ public class TelegramChannelService : ITelegramChannelService
 
         throw new InvalidOperationException(
             $"У колажі №{collageIndex} довжина підпису {plainText.Length} символів, максимально допустиме значення {TelegramCaptionMaxLength}.");
+    }
+
+    private async Task SendPhotoFromDownloadedContentAsync(
+        ITelegramBotClient client,
+        ChatId chatId,
+        string mediaUrl,
+        string? captionHtml,
+        CancellationToken cancellationToken)
+    {
+        await using var media = await DownloadMediaForTelegramAsync(mediaUrl, MediaType.Photo, cancellationToken);
+        var input = InputFile.FromStream(media.Stream, media.FileName);
+
+        if (string.IsNullOrEmpty(captionHtml))
+        {
+            await client.SendPhoto(chatId, input, cancellationToken: cancellationToken);
+            return;
+        }
+
+        await client.SendPhoto(
+            chatId,
+            input,
+            caption: captionHtml,
+            parseMode: ParseMode.Html,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task SendVideoFromDownloadedContentAsync(
+        ITelegramBotClient client,
+        ChatId chatId,
+        string mediaUrl,
+        string? captionHtml,
+        CancellationToken cancellationToken)
+    {
+        await using var media = await DownloadMediaForTelegramAsync(mediaUrl, MediaType.Video, cancellationToken);
+        var input = InputFile.FromStream(media.Stream, media.FileName);
+
+        if (string.IsNullOrEmpty(captionHtml))
+        {
+            await client.SendVideo(chatId, input, cancellationToken: cancellationToken);
+            return;
+        }
+
+        await client.SendVideo(
+            chatId,
+            input,
+            caption: captionHtml,
+            parseMode: ParseMode.Html,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<DownloadedMedia> DownloadMediaForTelegramAsync(
+        string mediaUrl,
+        MediaType expectedType,
+        CancellationToken cancellationToken)
+    {
+        var http = _httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
+
+        using var response = await http.GetAsync(
+            mediaUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        ValidateTelegramMediaContentType(mediaUrl, contentType, expectedType);
+
+        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken);
+        memory.Position = 0;
+
+        var fileName = BuildTelegramMediaFileName(mediaUrl, contentType, expectedType);
+        return new DownloadedMedia(memory, fileName);
+    }
+
+    private static void ValidateTelegramMediaContentType(string mediaUrl, string? contentType, MediaType expectedType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+            return;
+
+        var ok = expectedType switch
+        {
+            MediaType.Photo => contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase),
+            MediaType.Video => contentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+
+        if (ok)
+            return;
+
+        throw new InvalidOperationException(
+            $"Медіа за URL '{mediaUrl}' має Content-Type '{contentType}', який не підходить для типу '{expectedType}'.");
+    }
+
+    private static string BuildTelegramMediaFileName(string mediaUrl, string? contentType, MediaType expectedType)
+    {
+        var ext = GetExtensionFromContentType(contentType)
+                  ?? Path.GetExtension(GetSafePathFromUrl(mediaUrl))
+                  ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(ext) || ext == ".")
+        {
+            ext = expectedType == MediaType.Photo ? ".jpg" : ".mp4";
+        }
+
+        if (!ext.StartsWith(".", StringComparison.Ordinal))
+            ext = "." + ext;
+
+        return (expectedType == MediaType.Photo ? "photo" : "video") + ext.ToLowerInvariant();
+    }
+
+    private static string GetSafePathFromUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return string.Empty;
+
+        return uri.AbsolutePath;
+    }
+
+    private static string? GetExtensionFromContentType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+            return null;
+
+        if (MediaTypeHeaderValue.TryParse(contentType, out var parsed))
+            contentType = parsed.MediaType;
+
+        return contentType?.ToLowerInvariant() switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/jpg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            "video/mp4" => ".mp4",
+            "video/webm" => ".webm",
+            "video/quicktime" => ".mov",
+            "video/x-matroska" => ".mkv",
+            "video/x-msvideo" => ".avi",
+            _ => null
+        };
+    }
+
+    private sealed class DownloadedMedia : IAsyncDisposable
+    {
+        public DownloadedMedia(Stream stream, string fileName)
+        {
+            Stream = stream;
+            FileName = fileName;
+        }
+
+        public Stream Stream { get; }
+        public string FileName { get; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Stream.DisposeAsync();
+        }
     }
 }
