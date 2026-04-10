@@ -22,8 +22,20 @@ public class ImgBbUploadService : IImgBbUploadService
 
     public async Task<string> UploadImageAsync(Stream imageStream, string fileName, CancellationToken cancellationToken = default)
     {
-        var key = _options.ApiKey?.Trim();
-        if (string.IsNullOrEmpty(key) || key.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
+        var keys = _options.ApiKeys
+            .Select(k => (k ?? string.Empty).Trim())
+            .Where(k => !string.IsNullOrEmpty(k) && !k.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var singleKey = (_options.ApiKey ?? string.Empty).Trim();
+        if (!string.IsNullOrEmpty(singleKey) &&
+            !singleKey.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase) &&
+            !keys.Contains(singleKey, StringComparer.Ordinal))
+        {
+            keys.Insert(0, singleKey);
+        }
+
+        if (keys.Count == 0)
         {
             await Task.Delay(50, cancellationToken);
             return $"https://i.ibb.co/placeholder/{Uri.EscapeDataString(fileName)}";
@@ -33,18 +45,66 @@ public class ImgBbUploadService : IImgBbUploadService
         await imageStream.CopyToAsync(ms, cancellationToken);
         var base64 = Convert.ToBase64String(ms.ToArray());
 
-        using var content = new MultipartFormDataContent();
-        content.Add(new StringContent(key), "key");
-        content.Add(new StringContent(base64), "image");
+        var lastError = string.Empty;
+        for (var i = 0; i < keys.Count; i++)
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StringContent(base64), "image");
 
-        var response = await _http.PostAsync("https://api.imgbb.com/1/upload", content, cancellationToken);
-        response.EnsureSuccessStatusCode();
+            var requestUrl = $"https://api.imgbb.com/1/upload?key={Uri.EscapeDataString(keys[i])}";
+            var response = await _http.PostAsync(requestUrl, content, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var doc = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
-        var url = doc.RootElement.GetProperty("data").GetProperty("url").GetString();
-        if (string.IsNullOrEmpty(url))
-            throw new InvalidOperationException("ImgBB: порожня відповідь url.");
-        return url;
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(responseBody);
+                var url = doc.RootElement.GetProperty("data").GetProperty("url").GetString();
+                if (string.IsNullOrEmpty(url))
+                    throw new InvalidOperationException("ImgBB: порожня відповідь url.");
+                return url;
+            }
+
+            lastError = BuildErrorMessage(response.StatusCode, responseBody);
+            if (i < keys.Count - 1 && IsInvalidApiKeyResponse(responseBody))
+                continue;
+
+            throw new HttpRequestException(lastError, null, response.StatusCode);
+        }
+
+        throw new HttpRequestException(string.IsNullOrEmpty(lastError) ? "ImgBB: запит завершився помилкою." : lastError);
+    }
+
+    private static bool IsInvalidApiKeyResponse(string responseBody)
+    {
+        if (responseBody.Contains("Invalid API v1 key", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(responseBody);
+            if (!doc.RootElement.TryGetProperty("error", out var error))
+                return false;
+
+            var hasCode100 = error.TryGetProperty("code", out var codeElement) &&
+                             codeElement.ValueKind == JsonValueKind.Number &&
+                             codeElement.TryGetInt32(out var code) &&
+                             code == 100;
+
+            var hasInvalidMessage = error.TryGetProperty("message", out var messageElement) &&
+                                    messageElement.ValueKind == JsonValueKind.String &&
+                                    (messageElement.GetString() ?? string.Empty).Contains("Invalid API v1 key", StringComparison.OrdinalIgnoreCase);
+
+            return hasCode100 || hasInvalidMessage;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string BuildErrorMessage(System.Net.HttpStatusCode statusCode, string responseBody)
+    {
+        var body = string.IsNullOrWhiteSpace(responseBody) ? string.Empty : $" Body: {responseBody}";
+        return $"ImgBB upload failed: {(int)statusCode} ({statusCode}).{body}";
     }
 }

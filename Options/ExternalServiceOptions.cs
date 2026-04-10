@@ -5,6 +5,7 @@ public class ImgBbOptions
     public const string SectionName = "ImgBB";
 
     public string ApiKey { get; set; } = string.Empty;
+    public List<string> ApiKeys { get; set; } = new();
 }
 
 /// <summary>

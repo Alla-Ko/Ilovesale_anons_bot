@@ -136,20 +136,28 @@ public class EditModel : PageModel
                 var prepared = await _media.PrepareForUploadAsync(stream, row.MediaFile.FileName, mediaType, row.MediaFile.ContentType);
                 await using (prepared.Stream)
                 {
-                    if (mediaType == MediaType.Photo)
+                    try
                     {
-                        mediaUrl = await _imgBb.UploadImageAsync(prepared.Stream, prepared.FileName);
-                    }
-                    else
-                    {
-                        var videoResult = await _tempClip.UploadVideoAsync(prepared.Stream, prepared.FileName, prepared.ContentType);
-                        if (!videoResult.Success)
+                        if (mediaType == MediaType.Photo)
                         {
-                            ModelState.AddModelError(string.Empty, videoResult.ErrorMessage ?? "Не вдалося завантажити відео.");
-                            return Page();
+                            mediaUrl = await _imgBb.UploadImageAsync(prepared.Stream, prepared.FileName);
                         }
+                        else
+                        {
+                            var videoResult = await _tempClip.UploadVideoAsync(prepared.Stream, prepared.FileName, prepared.ContentType);
+                            if (!videoResult.Success)
+                            {
+                                ModelState.AddModelError(string.Empty, videoResult.ErrorMessage ?? "Не вдалося завантажити відео.");
+                                return Page();
+                            }
 
-                        mediaUrl = videoResult.DownloadUrl!;
+                            mediaUrl = videoResult.DownloadUrl!;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ModelState.AddModelError(string.Empty, $"Колаж #{order}: не вдалося завантажити файл ({ex.Message}).");
+                        return Page();
                     }
                 }
             }
