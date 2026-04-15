@@ -16,6 +16,10 @@ namespace Announcement.Pages.Announcements;
 public class IndexModel : PageModel
 {
     private static readonly CultureInfo UkCulture = CultureInfo.GetCultureInfo("uk-UA");
+    private static readonly TimeSpan MonoRatesCacheTtl = TimeSpan.FromMinutes(30);
+    private static readonly object MonoRatesCacheLock = new();
+    private static MonoRatesView? _lastMonoRates;
+    private static DateTime _lastMonoRatesAtUtc;
 
     private readonly ApplicationDbContext _db;
     private readonly ITelegraphPageService _telegraph;
@@ -249,13 +253,35 @@ public class IndexModel : PageModel
                 result.EurBuy is null && result.EurSell is null &&
                 result.PlnBuy is null && result.PlnSell is null &&
                 result.GbpBuy is null && result.GbpSell is null)
-                return null;
+                return GetCachedMonoRates();
 
+            CacheMonoRates(result);
             return result;
         }
         catch
         {
-            return null;
+            return GetCachedMonoRates();
+        }
+    }
+
+    private static void CacheMonoRates(MonoRatesView rates)
+    {
+        lock (MonoRatesCacheLock)
+        {
+            _lastMonoRates = rates;
+            _lastMonoRatesAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    private static MonoRatesView? GetCachedMonoRates()
+    {
+        lock (MonoRatesCacheLock)
+        {
+            if (_lastMonoRates is null)
+                return null;
+            if (DateTime.UtcNow - _lastMonoRatesAtUtc > MonoRatesCacheTtl)
+                return null;
+            return _lastMonoRates;
         }
     }
 
