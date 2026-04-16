@@ -17,9 +17,13 @@ public class IndexModel : PageModel
 {
     private static readonly CultureInfo UkCulture = CultureInfo.GetCultureInfo("uk-UA");
     private static readonly TimeSpan MonoRatesCacheTtl = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan PrivatRatesCacheTtl = TimeSpan.FromMinutes(30);
     private static readonly object MonoRatesCacheLock = new();
+    private static readonly object PrivatRatesCacheLock = new();
     private static MonoRatesView? _lastMonoRates;
     private static DateTime _lastMonoRatesAtUtc;
+    private static PrivatRatesView? _lastPrivatRates;
+    private static DateTime _lastPrivatRatesAtUtc;
 
     private readonly ApplicationDbContext _db;
     private readonly ITelegraphPageService _telegraph;
@@ -141,8 +145,20 @@ public class IndexModel : PageModel
     {
         Sort ??= "created";
         Dir ??= "desc";
-        var monoRatesTask = LoadMonoRatesAsync();
-        var privatRatesTask = LoadPrivatRatesAsync();
+        Task<MonoRatesView?> monoRatesTask;
+        Task<PrivatRatesView?> privatRatesTask;
+
+        // Не оновлюємо курси під час фільтрації списку — беремо останні кешовані значення.
+        if (CreatedDay.HasValue)
+        {
+            monoRatesTask = Task.FromResult(GetCachedMonoRates());
+            privatRatesTask = Task.FromResult(GetCachedPrivatRates());
+        }
+        else
+        {
+            monoRatesTask = LoadMonoRatesAsync();
+            privatRatesTask = LoadPrivatRatesAsync();
+        }
 
         IsStaff = User.IsInRole(AppRoles.Admin) || User.IsInRole(AppRoles.Moderator);
         var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -311,17 +327,45 @@ public class IndexModel : PageModel
             var usd = Pick("USD");
             var eur = Pick("EUR");
 
-            return new PrivatRatesView
+            var result = new PrivatRatesView
             {
                 UsdBuy = ParseDecimal(usd?.Buy),
                 UsdSell = ParseDecimal(usd?.Sale),
                 EurBuy = ParseDecimal(eur?.Buy),
                 EurSell = ParseDecimal(eur?.Sale)
             };
+
+            if (result.UsdBuy is null && result.UsdSell is null &&
+                result.EurBuy is null && result.EurSell is null)
+                return GetCachedPrivatRates();
+
+            CachePrivatRates(result);
+            return result;
         }
         catch
         {
-            return null;
+            return GetCachedPrivatRates();
+        }
+    }
+
+    private static void CachePrivatRates(PrivatRatesView rates)
+    {
+        lock (PrivatRatesCacheLock)
+        {
+            _lastPrivatRates = rates;
+            _lastPrivatRatesAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    private static PrivatRatesView? GetCachedPrivatRates()
+    {
+        lock (PrivatRatesCacheLock)
+        {
+            if (_lastPrivatRates is null)
+                return null;
+            if (DateTime.UtcNow - _lastPrivatRatesAtUtc > PrivatRatesCacheTtl)
+                return null;
+            return _lastPrivatRates;
         }
     }
 
