@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using SixLabors.ImageSharp;
 
 namespace Announcement.Pages.Announcements;
 
@@ -132,11 +133,16 @@ public class EditModel : PageModel
             if (hasFile)
             {
                 mediaType = _media.DetectMediaType(row.MediaFile!.FileName, row.MediaFile.ContentType);
-                await using var stream = row.MediaFile.OpenReadStream();
-                var prepared = await _media.PrepareForUploadAsync(stream, row.MediaFile.FileName, mediaType, row.MediaFile.ContentType);
-                await using (prepared.Stream)
+                try
                 {
-                    try
+                    await using var stream = row.MediaFile.OpenReadStream();
+                    var prepared = await _media.PrepareForUploadAsync(
+                        stream,
+                        row.MediaFile.FileName,
+                        mediaType,
+                        row.MediaFile.ContentType);
+
+                    await using (prepared.Stream)
                     {
                         if (mediaType == MediaType.Photo)
                         {
@@ -154,11 +160,16 @@ public class EditModel : PageModel
                             mediaUrl = videoResult.DownloadUrl!;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        ModelState.AddModelError(string.Empty, $"Колаж #{order}: не вдалося завантажити файл ({ex.Message}).");
-                        return Page();
-                    }
+                }
+                catch (ImageFormatException)
+                {
+                    ModelState.AddModelError(string.Empty, $"Колаж #{order}: файл зображення пошкоджений або має некоректний формат.");
+                    return Page();
+                }
+                catch (Exception ex)
+                {
+                    ModelState.AddModelError(string.Empty, $"Колаж #{order}: не вдалося завантажити файл ({ex.Message}).");
+                    return Page();
                 }
             }
             else

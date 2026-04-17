@@ -62,21 +62,50 @@ public class MediaProcessingService : IMediaProcessingService
         await input.CopyToAsync(memory, cancellationToken);
         memory.Position = 0;
 
-        using var image = await Image.LoadAsync(memory, cancellationToken);
-
-        if (image.Width > MaxDimension || image.Height > MaxDimension)
+        try
         {
-            var ratio = Math.Min((double)MaxDimension / image.Width, (double)MaxDimension / image.Height);
-            var w = Math.Max(1, (int)(image.Width * ratio));
-            var h = Math.Max(1, (int)(image.Height * ratio));
-            image.Mutate(x => x.Resize(w, h));
+            using var image = await Image.LoadAsync(memory, cancellationToken);
+
+            if (image.Width > MaxDimension || image.Height > MaxDimension)
+            {
+                var ratio = Math.Min((double)MaxDimension / image.Width, (double)MaxDimension / image.Height);
+                var w = Math.Max(1, (int)(image.Width * ratio));
+                var h = Math.Max(1, (int)(image.Height * ratio));
+                image.Mutate(x => x.Resize(w, h));
+            }
+
+            var outMs = new MemoryStream();
+            await image.SaveAsJpegAsync(outMs, new JpegEncoder { Quality = JpegQuality }, cancellationToken);
+            outMs.Position = 0;
+
+            var name = Path.ChangeExtension(Path.GetFileNameWithoutExtension(originalFileName), ".jpg");
+            return (outMs, string.IsNullOrEmpty(name) ? "image.jpg" : name, "image/jpeg");
+        }
+        catch (ImageFormatException)
+        {
+            // If image bytes are malformed or mislabeled, keep original bytes and let upstream storage validate.
+            memory.Position = 0;
+            var ct = NormalizeImageContentType(clientContentType, originalFileName);
+            return (new MemoryStream(memory.ToArray()), Path.GetFileName(originalFileName), ct);
+        }
+    }
+
+    private static string NormalizeImageContentType(string? clientContentType, string fileName)
+    {
+        if (!string.IsNullOrWhiteSpace(clientContentType) &&
+            clientContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return clientContentType.Trim();
         }
 
-        var outMs = new MemoryStream();
-        await image.SaveAsJpegAsync(outMs, new JpegEncoder { Quality = JpegQuality }, cancellationToken);
-        outMs.Position = 0;
-
-        var name = Path.ChangeExtension(Path.GetFileNameWithoutExtension(originalFileName), ".jpg");
-        return (outMs, string.IsNullOrEmpty(name) ? "image.jpg" : name, "image/jpeg");
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => "application/octet-stream"
+        };
     }
 }
