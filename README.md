@@ -1,4 +1,4 @@
-# Announcement
+dotnetd# Announcement
 
 Монолітний ASP.NET Core 8 (Razor Pages), PostgreSQL, Identity з ролями. Анонси з колажами, завантаження медіа (ImgBB / tmpfile.link), інтеграції Telegraph та Telegram.
 

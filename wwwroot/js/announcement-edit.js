@@ -12,7 +12,7 @@
     const btnBulk = document.getElementById('btn-bulk-media');
     if (!container || !tpl || !form) return;
 
-    var maxRows = 60;
+    var maxRows = 200;
 
     const DND_TYPE = 'application/x-announcement-collage';
 
