@@ -118,12 +118,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapRazorPages();
 
-// --- ТИМЧАСОВО (локальний dev): повний дроп БД + міграції + ролі та перший адмін з .env.
-// Після першого успішного запуску закоментуйте або видаліть наступний рядок.
-//await DevDatabaseRecreateSeeder.RunAsync(app.Services);
-// --- кінець тимчасового блоку ---
-
-await DbSeeder.SeedAsync(app.Services);
-
 app.Run();
 

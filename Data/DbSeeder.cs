@@ -2,11 +2,16 @@ using Announcement.Authorization;
 using Announcement.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using System.IO;
+using System.Net.Sockets;
 
 namespace Announcement.Data;
 
 public static class DbSeeder
 {
+    private const int MigrationMaxAttempts = 5;
+
     /// <summary>
     /// Застосовує міграції та створює ролі й першого адміна з .env (якщо ще немає).
     /// </summary>
@@ -14,8 +19,48 @@ public static class DbSeeder
     {
         await using var scope = services.CreateAsyncScope();
         var ctx = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await ctx.Database.MigrateAsync(cancellationToken);
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
+
+        for (var attempt = 1; attempt <= MigrationMaxAttempts; attempt++)
+        {
+            try
+            {
+                await ctx.Database.MigrateAsync(cancellationToken);
+                break;
+            }
+            catch (Exception ex) when (IsTransientDatabaseException(ex) && attempt < MigrationMaxAttempts)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Min(2 * attempt, 10));
+                logger.LogWarning(
+                    ex,
+                    "Transient DB error during migration. Attempt {Attempt}/{MaxAttempts}. Retrying in {DelaySeconds}s",
+                    attempt,
+                    MigrationMaxAttempts,
+                    delay.TotalSeconds);
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (Exception ex) when (IsTransientDatabaseException(ex))
+            {
+                logger.LogError(
+                    ex,
+                    "Migration failed after {MaxAttempts} attempts due to transient DB errors.",
+                    MigrationMaxAttempts);
+                throw;
+            }
+        }
+
         await SeedRolesAndAdminAsync(scope.ServiceProvider, cancellationToken);
+    }
+
+    private static bool IsTransientDatabaseException(Exception ex)
+    {
+        for (Exception? current = ex; current != null; current = current.InnerException)
+        {
+            if (current is NpgsqlException || current is IOException || current is SocketException)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
