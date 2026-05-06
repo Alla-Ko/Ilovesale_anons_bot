@@ -24,7 +24,21 @@ if (!string.IsNullOrWhiteSpace(port))
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Connection string 'DefaultConnection' is not configured.");
+
+    options.UseNpgsql(connectionString, npgsqlOptions =>
+    {
+        // Railway/хмарні БД можуть коротко обривати TCP/TLS сесію.
+        // Retry зменшує кількість 500 на коротких мережевих збоях.
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorCodesToAdd: null);
+        npgsqlOptions.CommandTimeout(30);
+    });
+});
 
 builder.Services
     .AddIdentity<ApplicationUser, IdentityRole>(options =>

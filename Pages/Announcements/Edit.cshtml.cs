@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 
 namespace Announcement.Pages.Announcements;
@@ -17,17 +18,20 @@ public class EditModel : PageModel
     private readonly IMediaProcessingService _media;
     private readonly IImgBbUploadService _imgBb;
     private readonly ITempClipUploadService _tempClip;
+    private readonly ILogger<EditModel> _logger;
 
     public EditModel(
         ApplicationDbContext db,
         IMediaProcessingService media,
         IImgBbUploadService imgBb,
-        ITempClipUploadService tempClip)
+        ITempClipUploadService tempClip,
+        ILogger<EditModel> logger)
     {
         _db = db;
         _media = media;
         _imgBb = imgBb;
         _tempClip = tempClip;
+        _logger = logger;
     }
 
     [BindProperty]
@@ -91,6 +95,7 @@ public class EditModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(int id)
     {
+        _logger.LogInformation("Announcement edit started. AnnouncementId={AnnouncementId}", id);
         CountryOptions = CountryLabels.Labels.Select(kv => new SelectListItem(kv.Value, ((int)kv.Key).ToString())).ToList();
 
         if (Input.Id != id)
@@ -120,6 +125,9 @@ public class EditModel : PageModel
             order++;
             var hasFile = row.MediaFile != null && row.MediaFile.Length > 0;
             var hasKeep = !string.IsNullOrWhiteSpace(row.KeepMediaUrl);
+            _logger.LogInformation(
+                "Processing collage row. AnnouncementId={AnnouncementId}, Row={Row}, HasFile={HasFile}, HasKeepUrl={HasKeepUrl}, ExistingCollageId={CollageId}",
+                id, order, hasFile, hasKeep, row.Id);
 
             if (!hasFile && !hasKeep)
             {
@@ -146,13 +154,18 @@ public class EditModel : PageModel
                     {
                         if (mediaType == MediaType.Photo)
                         {
+                            _logger.LogInformation("Uploading photo to ImgBB. AnnouncementId={AnnouncementId}, Row={Row}, FileName={FileName}", id, order, prepared.FileName);
                             mediaUrl = await _imgBb.UploadImageAsync(prepared.Stream, prepared.FileName);
                         }
                         else
                         {
+                            _logger.LogInformation("Uploading video to temp clip service. AnnouncementId={AnnouncementId}, Row={Row}, FileName={FileName}", id, order, prepared.FileName);
                             var videoResult = await _tempClip.UploadVideoAsync(prepared.Stream, prepared.FileName, prepared.ContentType);
                             if (!videoResult.Success)
                             {
+                                _logger.LogWarning(
+                                    "Video upload failed. AnnouncementId={AnnouncementId}, Row={Row}, Error={Error}",
+                                    id, order, videoResult.ErrorMessage);
                                 ModelState.AddModelError(string.Empty, videoResult.ErrorMessage ?? "Не вдалося завантажити відео.");
                                 return Page();
                             }
@@ -163,11 +176,13 @@ public class EditModel : PageModel
                 }
                 catch (ImageFormatException)
                 {
+                    _logger.LogWarning("Invalid image format. AnnouncementId={AnnouncementId}, Row={Row}", id, order);
                     ModelState.AddModelError(string.Empty, $"Колаж #{order}: файл зображення пошкоджений або має некоректний формат.");
                     return Page();
                 }
                 catch (Exception ex)
                 {
+                    _logger.LogError(ex, "Upload failed. AnnouncementId={AnnouncementId}, Row={Row}", id, order);
                     ModelState.AddModelError(string.Empty, $"Колаж #{order}: не вдалося завантажити файл ({ex.Message}).");
                     return Page();
                 }
@@ -224,7 +239,11 @@ public class EditModel : PageModel
         if (!string.IsNullOrEmpty(editorId))
             entity.LastUpdatedById = editorId;
 
+        _logger.LogInformation(
+            "Saving announcement changes. AnnouncementId={AnnouncementId}, RowsSubmitted={Rows}, ExistingToRemove={ToRemoveCount}",
+            id, rows.Count, toRemove.Count);
         await _db.SaveChangesAsync();
+        _logger.LogInformation("Announcement edit saved successfully. AnnouncementId={AnnouncementId}", id);
         return RedirectToPage("./Index");
     }
 

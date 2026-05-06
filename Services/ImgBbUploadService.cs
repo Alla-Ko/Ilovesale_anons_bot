@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Announcement.Options;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Announcement.Services;
@@ -13,11 +14,13 @@ public class ImgBbUploadService : IImgBbUploadService
 {
     private readonly HttpClient _http;
     private readonly ImgBbOptions _options;
+    private readonly ILogger<ImgBbUploadService> _logger;
 
-    public ImgBbUploadService(HttpClient http, IOptions<ImgBbOptions> options)
+    public ImgBbUploadService(HttpClient http, IOptions<ImgBbOptions> options, ILogger<ImgBbUploadService> logger)
     {
         _http = http;
         _options = options.Value;
+        _logger = logger;
     }
 
     public async Task<string> UploadImageAsync(Stream imageStream, string fileName, CancellationToken cancellationToken = default)
@@ -37,6 +40,7 @@ public class ImgBbUploadService : IImgBbUploadService
 
         if (keys.Count == 0)
         {
+            _logger.LogWarning("ImgBB API key is not configured. Using placeholder url for file {FileName}", fileName);
             await Task.Delay(50, cancellationToken);
             return $"https://i.ibb.co/placeholder/{Uri.EscapeDataString(fileName)}";
         }
@@ -48,6 +52,7 @@ public class ImgBbUploadService : IImgBbUploadService
         var lastError = string.Empty;
         for (var i = 0; i < keys.Count; i++)
         {
+            _logger.LogInformation("ImgBB upload attempt {Attempt}/{MaxAttempts} for file {FileName}", i + 1, keys.Count, fileName);
             using var content = new MultipartFormDataContent();
             content.Add(new StringContent(base64), "image");
 
@@ -61,10 +66,14 @@ public class ImgBbUploadService : IImgBbUploadService
                 var url = doc.RootElement.GetProperty("data").GetProperty("url").GetString();
                 if (string.IsNullOrEmpty(url))
                     throw new InvalidOperationException("ImgBB: порожня відповідь url.");
+                _logger.LogInformation("ImgBB upload success for file {FileName}", fileName);
                 return url;
             }
 
             lastError = BuildErrorMessage(response.StatusCode, responseBody);
+            _logger.LogWarning(
+                "ImgBB upload failed for file {FileName}. Attempt {Attempt}/{MaxAttempts}. Status={StatusCode}. Error={Error}",
+                fileName, i + 1, keys.Count, (int)response.StatusCode, lastError);
             if (i < keys.Count - 1 && IsInvalidApiKeyResponse(responseBody))
                 continue;
 
