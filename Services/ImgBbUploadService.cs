@@ -12,6 +12,9 @@ public interface IImgBbUploadService
 
 public class ImgBbUploadService : IImgBbUploadService
 {
+    private static readonly object KeySelectionLock = new();
+    private static string? _lastSuccessfulApiKey;
+
     private readonly HttpClient _http;
     private readonly ImgBbOptions _options;
     private readonly ILogger<ImgBbUploadService> _logger;
@@ -36,6 +39,21 @@ public class ImgBbUploadService : IImgBbUploadService
             !keys.Contains(singleKey, StringComparer.Ordinal))
         {
             keys.Insert(0, singleKey);
+        }
+
+        // Prefer the last known good key to reduce repeated failures on every next upload.
+        string? preferredKey;
+        lock (KeySelectionLock)
+            preferredKey = _lastSuccessfulApiKey;
+        if (!string.IsNullOrEmpty(preferredKey))
+        {
+            var idx = keys.FindIndex(k => string.Equals(k, preferredKey, StringComparison.Ordinal));
+            if (idx > 0)
+            {
+                var chosen = keys[idx];
+                keys.RemoveAt(idx);
+                keys.Insert(0, chosen);
+            }
         }
 
         if (keys.Count == 0)
@@ -66,6 +84,8 @@ public class ImgBbUploadService : IImgBbUploadService
                 var url = doc.RootElement.GetProperty("data").GetProperty("url").GetString();
                 if (string.IsNullOrEmpty(url))
                     throw new InvalidOperationException("ImgBB: порожня відповідь url.");
+                lock (KeySelectionLock)
+                    _lastSuccessfulApiKey = keys[i];
                 _logger.LogInformation("ImgBB upload success for file {FileName}", fileName);
                 return url;
             }

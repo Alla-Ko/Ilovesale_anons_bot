@@ -247,6 +247,205 @@ public class EditModel : PageModel
         return RedirectToPage("./Index");
     }
 
+    public async Task<IActionResult> OnPostUpdateAnnouncementAsync(int id, [FromForm] string title, [FromForm] Country country)
+    {
+        var entity = await _db.Announcements.FirstOrDefaultAsync(a => a.Id == id);
+        if (entity == null)
+            return NotFound();
+        if (!await CanEditAsync(entity))
+            return Forbid();
+
+        var safeTitle = (title ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(safeTitle))
+            return new JsonResult(new { success = false, error = "Вкажіть назву анонса." });
+
+        entity.Title = safeTitle;
+        entity.Country = country;
+        entity.TelegraphUrl1 = null;
+        entity.TelegraphUrl2 = null;
+        UpdateLastEditor(entity);
+        await _db.SaveChangesAsync();
+
+        return new JsonResult(new { success = true });
+    }
+
+    public async Task<IActionResult> OnPostAddCollageAsync(
+        int id,
+        IFormFile? mediaFile,
+        [FromForm] string? caption1,
+        [FromForm] string? caption2,
+        [FromForm] int? sortOrder)
+    {
+        var entity = await _db.Announcements.Include(a => a.Collages).FirstOrDefaultAsync(a => a.Id == id);
+        if (entity == null)
+            return NotFound();
+        if (!await CanEditAsync(entity))
+            return Forbid();
+        if (mediaFile == null || mediaFile.Length <= 0)
+            return new JsonResult(new { success = false, error = "Додайте файл для завантаження." });
+
+        try
+        {
+            var mediaType = _media.DetectMediaType(mediaFile.FileName, mediaFile.ContentType);
+            await using var stream = mediaFile.OpenReadStream();
+            var prepared = await _media.PrepareForUploadAsync(
+                stream,
+                mediaFile.FileName,
+                mediaType,
+                mediaFile.ContentType);
+
+            string mediaUrl;
+            await using (prepared.Stream)
+            {
+                if (mediaType == MediaType.Photo)
+                {
+                    mediaUrl = await _imgBb.UploadImageAsync(prepared.Stream, prepared.FileName);
+                }
+                else
+                {
+                    var videoResult = await _tempClip.UploadVideoAsync(prepared.Stream, prepared.FileName, prepared.ContentType);
+                    if (!videoResult.Success || string.IsNullOrWhiteSpace(videoResult.DownloadUrl))
+                        return new JsonResult(new { success = false, error = videoResult.ErrorMessage ?? "Не вдалося завантажити відео." });
+                    mediaUrl = videoResult.DownloadUrl;
+                }
+            }
+
+            var order = sortOrder.GetValueOrDefault();
+            if (order < 0)
+                order = 0;
+
+            var collage = new CollageEntity
+            {
+                AnnouncementId = entity.Id,
+                SortOrder = order,
+                MediaUrl = mediaUrl,
+                MediaType = mediaType,
+                Caption1 = string.IsNullOrWhiteSpace(caption1) ? null : caption1,
+                Caption2 = string.IsNullOrWhiteSpace(caption2) ? null : caption2
+            };
+            _db.Collages.Add(collage);
+
+            entity.TelegraphUrl1 = null;
+            entity.TelegraphUrl2 = null;
+            UpdateLastEditor(entity);
+            await _db.SaveChangesAsync();
+
+            return new JsonResult(new
+            {
+                success = true,
+                collage = new
+                {
+                    id = collage.Id,
+                    keep = collage.MediaUrl,
+                    mediaType = collage.MediaType.ToString()
+                }
+            });
+        }
+        catch (ImageFormatException)
+        {
+            return new JsonResult(new { success = false, error = "Файл зображення пошкоджений або має некоректний формат." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to add collage. AnnouncementId={AnnouncementId}", id);
+            return new JsonResult(new { success = false, error = $"Не вдалося завантажити файл ({ex.Message})." });
+        }
+    }
+
+    public async Task<IActionResult> OnPostUpdateCollageAsync(
+        int id,
+        int collageId,
+        [FromForm] string? caption1,
+        [FromForm] string? caption2,
+        [FromForm] int? sortOrder)
+    {
+        var entity = await _db.Announcements.FirstOrDefaultAsync(a => a.Id == id);
+        if (entity == null)
+            return NotFound();
+        if (!await CanEditAsync(entity))
+            return Forbid();
+
+        var collage = await _db.Collages.FirstOrDefaultAsync(c => c.Id == collageId && c.AnnouncementId == id);
+        if (collage == null)
+            return NotFound();
+
+        collage.Caption1 = string.IsNullOrWhiteSpace(caption1) ? null : caption1;
+        collage.Caption2 = string.IsNullOrWhiteSpace(caption2) ? null : caption2;
+        if (sortOrder.HasValue && sortOrder.Value >= 0)
+            collage.SortOrder = sortOrder.Value;
+
+        entity.TelegraphUrl1 = null;
+        entity.TelegraphUrl2 = null;
+        UpdateLastEditor(entity);
+        await _db.SaveChangesAsync();
+
+        return new JsonResult(new { success = true });
+    }
+
+    public async Task<IActionResult> OnPostDeleteCollageAsync(int id, int collageId)
+    {
+        var entity = await _db.Announcements.FirstOrDefaultAsync(a => a.Id == id);
+        if (entity == null)
+            return NotFound();
+        if (!await CanEditAsync(entity))
+            return Forbid();
+
+        var collage = await _db.Collages.FirstOrDefaultAsync(c => c.Id == collageId && c.AnnouncementId == id);
+        if (collage == null)
+            return new JsonResult(new { success = true });
+
+        _db.Collages.Remove(collage);
+        entity.TelegraphUrl1 = null;
+        entity.TelegraphUrl2 = null;
+        UpdateLastEditor(entity);
+        await _db.SaveChangesAsync();
+
+        return new JsonResult(new { success = true });
+    }
+
+    public async Task<IActionResult> OnPostReorderCollagesAsync(int id, [FromBody] ReorderRequest? request)
+    {
+        var entity = await _db.Announcements.FirstOrDefaultAsync(a => a.Id == id);
+        if (entity == null)
+            return NotFound();
+        if (!await CanEditAsync(entity))
+            return Forbid();
+        if (request == null || request.Items.Count == 0)
+            return new JsonResult(new { success = true });
+
+        var itemIds = request.Items.Select(i => i.Id).Distinct().ToList();
+        var collages = await _db.Collages
+            .Where(c => c.AnnouncementId == id && itemIds.Contains(c.Id))
+            .ToListAsync();
+
+        foreach (var item in request.Items)
+        {
+            if (item.SortOrder < 0)
+                continue;
+            var collage = collages.FirstOrDefault(c => c.Id == item.Id);
+            if (collage != null)
+                collage.SortOrder = item.SortOrder;
+        }
+
+        entity.TelegraphUrl1 = null;
+        entity.TelegraphUrl2 = null;
+        UpdateLastEditor(entity);
+        await _db.SaveChangesAsync();
+
+        return new JsonResult(new { success = true });
+    }
+
+    public class ReorderRequest
+    {
+        public List<ReorderItem> Items { get; set; } = new();
+    }
+
+    public class ReorderItem
+    {
+        public int Id { get; set; }
+        public int SortOrder { get; set; }
+    }
+
     private async Task<bool> CanEditAsync(AnnouncementEntity entity)
     {
         var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -263,5 +462,12 @@ public class EditModel : PageModel
         if (u.EndsWith(".mp4") || u.EndsWith(".webm") || u.Contains("video"))
             return MediaType.Video;
         return MediaType.Photo;
+    }
+
+    private void UpdateLastEditor(AnnouncementEntity entity)
+    {
+        var editorId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(editorId))
+            entity.LastUpdatedById = editorId;
     }
 }
