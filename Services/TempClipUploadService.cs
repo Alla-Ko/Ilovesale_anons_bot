@@ -115,8 +115,6 @@ public class TempClipUploadService : ITempClipUploadService
             };
             // Читаємо в буфер для debug І для відправки
             var debugBytes = await multipart.ReadAsByteArrayAsync(cancellationToken);
-            var debugText = Encoding.UTF8.GetString(debugBytes[..Math.Min(500, debugBytes.Length)]);
-            _logger.LogWarning("tmpfile.link DEBUG request body:\n{Body}", debugText);
 
             // Відправляємо з буфера (не з multipart — він вже прочитаний!)
             using var bodyContent = new ByteArrayContent(debugBytes);
@@ -139,12 +137,12 @@ public class TempClipUploadService : ITempClipUploadService
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             var statusCode = (int)response.StatusCode;
 
-            _logger.LogInformation(
-                "tmpfile.link: спроба {Attempt}/{Max}, HTTP {Code}, тіло: {Body}",
-                attempt, MaxAttempts, statusCode, TruncateForLog(body));
-
             if (statusCode >= 200 && statusCode < 300)
                 return ParseResponse(body);
+
+            _logger.LogWarning(
+                "tmpfile.link upload failed attempt {Attempt}/{Max}: HTTP {Code}, response: {Body}",
+                attempt, MaxAttempts, statusCode, TruncateForLog(body));
 
             if (statusCode is not (500 or 502 or 503 or 504))
             {

@@ -23,6 +23,5 @@ public static class DevDatabaseRecreateSeeder
         await ctx.Database.MigrateAsync(cancellationToken);
 
         await DbSeeder.SeedRolesAndAdminAsync(scope.ServiceProvider, cancellationToken);
-        logger.LogInformation("DEV: сід ролей і адміна виконано.");
     }
 }

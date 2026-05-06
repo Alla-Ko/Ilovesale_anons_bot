@@ -70,7 +70,6 @@ public class ImgBbUploadService : IImgBbUploadService
         var lastError = string.Empty;
         for (var i = 0; i < keys.Count; i++)
         {
-            _logger.LogInformation("ImgBB upload attempt {Attempt}/{MaxAttempts} for file {FileName}", i + 1, keys.Count, fileName);
             using var content = new MultipartFormDataContent();
             content.Add(new StringContent(base64), "image");
 
@@ -86,7 +85,6 @@ public class ImgBbUploadService : IImgBbUploadService
                     throw new InvalidOperationException("ImgBB: порожня відповідь url.");
                 lock (KeySelectionLock)
                     _lastSuccessfulApiKey = keys[i];
-                _logger.LogInformation("ImgBB upload success for file {FileName}", fileName);
                 return url;
             }
 

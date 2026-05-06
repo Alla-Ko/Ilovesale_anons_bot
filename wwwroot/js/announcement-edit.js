@@ -357,6 +357,7 @@
                 try {
                     const text = await navigator.clipboard.readText();
                     ta.value = (ta.value ? ta.value + '\n' : '') + text;
+                    ta.dispatchEvent(new Event('input', { bubbles: true }));
                 } catch (err) {
                     alert('Немає доступу до буфера. Вставте вручну (Ctrl+V) у полі підпису.');
                 }

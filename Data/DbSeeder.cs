@@ -83,10 +83,7 @@ public static class DbSeeder
         var adminPass = configuration["ADMIN_PASSWORD"]?.Trim();
         if (string.IsNullOrEmpty(adminUser) || string.IsNullOrEmpty(adminPass)
             || adminPass.StartsWith("YOUR_", StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogInformation("ADMIN_USERNAME / ADMIN_PASSWORD не задані — початкового адміна не створено.");
             return;
-        }
 
         var existing = await userManager.FindByNameAsync(adminUser);
         if (existing != null)
@@ -101,6 +98,5 @@ public static class DbSeeder
         }
 
         await userManager.AddToRoleAsync(user, AppRoles.Admin);
-        logger.LogInformation("Створено адміністратора {User}", adminUser);
     }
 }

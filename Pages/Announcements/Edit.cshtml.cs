@@ -95,7 +95,6 @@ public class EditModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(int id)
     {
-        _logger.LogInformation("Announcement edit started. AnnouncementId={AnnouncementId}", id);
         CountryOptions = CountryLabels.Labels.Select(kv => new SelectListItem(kv.Value, ((int)kv.Key).ToString())).ToList();
 
         if (Input.Id != id)
@@ -125,9 +124,6 @@ public class EditModel : PageModel
             order++;
             var hasFile = row.MediaFile != null && row.MediaFile.Length > 0;
             var hasKeep = !string.IsNullOrWhiteSpace(row.KeepMediaUrl);
-            _logger.LogInformation(
-                "Processing collage row. AnnouncementId={AnnouncementId}, Row={Row}, HasFile={HasFile}, HasKeepUrl={HasKeepUrl}, ExistingCollageId={CollageId}",
-                id, order, hasFile, hasKeep, row.Id);
 
             if (!hasFile && !hasKeep)
             {
@@ -154,12 +150,10 @@ public class EditModel : PageModel
                     {
                         if (mediaType == MediaType.Photo)
                         {
-                            _logger.LogInformation("Uploading photo to ImgBB. AnnouncementId={AnnouncementId}, Row={Row}, FileName={FileName}", id, order, prepared.FileName);
                             mediaUrl = await _imgBb.UploadImageAsync(prepared.Stream, prepared.FileName);
                         }
                         else
                         {
-                            _logger.LogInformation("Uploading video to temp clip service. AnnouncementId={AnnouncementId}, Row={Row}, FileName={FileName}", id, order, prepared.FileName);
                             var videoResult = await _tempClip.UploadVideoAsync(prepared.Stream, prepared.FileName, prepared.ContentType);
                             if (!videoResult.Success)
                             {
@@ -239,11 +233,7 @@ public class EditModel : PageModel
         if (!string.IsNullOrEmpty(editorId))
             entity.LastUpdatedById = editorId;
 
-        _logger.LogInformation(
-            "Saving announcement changes. AnnouncementId={AnnouncementId}, RowsSubmitted={Rows}, ExistingToRemove={ToRemoveCount}",
-            id, rows.Count, toRemove.Count);
         await _db.SaveChangesAsync();
-        _logger.LogInformation("Announcement edit saved successfully. AnnouncementId={AnnouncementId}", id);
         return RedirectToPage("./Index");
     }
 
