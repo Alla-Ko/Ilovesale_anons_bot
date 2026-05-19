@@ -36,6 +36,7 @@ public class TelegraphPageService : ITelegraphPageService
         }
 
         var ordered = announcement.Collages.OrderBy(c => c.SortOrder).ToList();
+
         try
         {
             return await CreateSinglePageAsync(
@@ -44,36 +45,89 @@ public class TelegraphPageService : ITelegraphPageService
                 BuildNodes(ordered, variant),
                 cancellationToken);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("CONTENT_TOO_BIG", StringComparison.OrdinalIgnoreCase))
+        catch (InvalidOperationException ex) when (IsContentTooBig(ex))
         {
             if (ordered.Count < 2)
                 throw;
 
-            var n = ordered.Count;
-            var mid = n / 2;
+            try
+            {
+                return await CreatePagesFromPartsAsync(
+                    token,
+                    announcement.Title,
+                    SplitIntoParts(ordered, 2),
+                    variant,
+                    cancellationToken);
+            }
+            catch (InvalidOperationException ex2) when (IsContentTooBig(ex2))
+            {
+                if (ordered.Count < 3)
+                    throw;
 
-            var firstPart = new List<CollageEntity> { ordered[0] };
-            for (var i = 1; i < mid; i++)
-                firstPart.Add(ordered[i]);
-
-            var secondPart = new List<CollageEntity> { ordered[0] };
-            for (var i = mid; i < n; i++)
-                secondPart.Add(ordered[i]);
-
-            var firstUrl = await CreateSinglePageAsync(
-                token,
-                $"{announcement.Title} (1/2)",
-                BuildNodes(firstPart, variant),
-                cancellationToken);
-
-            var secondUrl = await CreateSinglePageAsync(
-                token,
-                $"{announcement.Title} (2/2)",
-                BuildNodes(secondPart, variant),
-                cancellationToken);
-
-            return $"{firstUrl};{secondUrl}";
+                return await CreatePagesFromPartsAsync(
+                    token,
+                    announcement.Title,
+                    SplitIntoParts(ordered, 3),
+                    variant,
+                    cancellationToken);
+            }
         }
+    }
+
+    private static bool IsContentTooBig(InvalidOperationException ex) =>
+        ex.Message.Contains("CONTENT_TOO_BIG", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Розбиває колажі на послідовні частини без дублювання.</summary>
+    private static List<List<CollageEntity>> SplitIntoParts(IReadOnlyList<CollageEntity> ordered, int partCount)
+    {
+        var n = ordered.Count;
+        var result = new List<List<CollageEntity>>(partCount);
+        var baseSize = n / partCount;
+        var remainder = n % partCount;
+        var index = 0;
+
+        for (var p = 0; p < partCount; p++)
+        {
+            var size = baseSize + (p < remainder ? 1 : 0);
+            if (size <= 0)
+                continue;
+
+            var chunk = new List<CollageEntity>(size);
+            for (var i = 0; i < size; i++)
+                chunk.Add(ordered[index++]);
+            result.Add(chunk);
+        }
+
+        return result;
+    }
+
+    private async Task<string> CreatePagesFromPartsAsync(
+        string token,
+        string baseTitle,
+        List<List<CollageEntity>> parts,
+        int variant,
+        CancellationToken cancellationToken)
+    {
+        var nonEmpty = parts.Where(p => p.Count > 0).ToList();
+        if (nonEmpty.Count == 0)
+            throw new InvalidOperationException("Telegraph: немає колажів для публікації.");
+
+        var urls = new List<string>(nonEmpty.Count);
+        for (var i = 0; i < nonEmpty.Count; i++)
+        {
+            var title = nonEmpty.Count == 1
+                ? baseTitle
+                : $"{baseTitle} ({i + 1}/{nonEmpty.Count})";
+
+            var url = await CreateSinglePageAsync(
+                token,
+                title,
+                BuildNodes(nonEmpty[i], variant),
+                cancellationToken);
+            urls.Add(url);
+        }
+
+        return string.Join(";", urls);
     }
 
     private List<object> BuildNodes(List<CollageEntity> collages, int variant)
