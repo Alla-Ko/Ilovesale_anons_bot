@@ -71,7 +71,7 @@ public class AnnouncementsApiController : ControllerBase
             CreatedAtUtc = entity.CreatedAtUtc
         };
 
-        return CreatedAtAction(nameof(GetByIdAsync), new { id = entity.Id }, response);
+        return Created($"/api/announcements/{entity.Id}", response);
     }
 
     /// <summary>Додати колаж до існуючого анонса (медіа вже має URL).</summary>
@@ -146,10 +146,10 @@ public class AnnouncementsApiController : ControllerBase
             CreatedAtUtc = collage.CreatedAtUtc
         };
 
-        return CreatedAtAction(nameof(GetByIdAsync), new { id = announcement.Id }, response);
+        return Created($"/api/announcements/{announcement.Id}/collages/{collage.Id}", response);
     }
 
-    /// <summary>Мінімальна перевірка існування анонса (для CreatedAtAction).</summary>
+    /// <summary>Отримати анонс за id.</summary>
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(CreateAnnouncementResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
