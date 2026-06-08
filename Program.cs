@@ -54,6 +54,11 @@ builder.Services
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+builder.Services.AddAuthentication()
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, BotApiKeyAuthenticationHandler>(
+        BotApiKeyAuthenticationHandler.SchemeName,
+        _ => { });
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Account/Login";
@@ -82,6 +87,7 @@ builder.Services.Configure<ImgBbOptions>(builder.Configuration.GetSection(ImgBbO
 builder.Services.Configure<TempClipOptions>(builder.Configuration.GetSection(TempClipOptions.SectionName));
 builder.Services.Configure<TelegraphOptions>(builder.Configuration.GetSection(TelegraphOptions.SectionName));
 builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection(TelegramOptions.SectionName));
+builder.Services.Configure<BotApiOptions>(builder.Configuration.GetSection(BotApiOptions.SectionName));
 
 builder.Services.AddHttpClient<IImgBbUploadService, ImgBbUploadService>();
 // tmpfile.link (Cloudflare): як у Postman — UA, Accept, без Expect: 100-continue (інакше часто 500 на великих multipart).
@@ -106,6 +112,7 @@ builder.Services.AddScoped<ITelegramChannelService, TelegramChannelService>();
 
 builder.Services.AddHostedService<AnnouncementCleanupBackgroundService>();
 
+builder.Services.AddControllers();
 builder.Services.AddRazorPages();
 
 var app = builder.Build();
@@ -116,6 +123,7 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapControllers();
 app.MapRazorPages();
 
 app.Run();
