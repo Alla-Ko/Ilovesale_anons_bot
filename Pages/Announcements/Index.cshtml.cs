@@ -54,7 +54,11 @@ public class IndexModel : PageModel
     /// <summary>Фільтр за календарним днем створення (UTC, без часу).</summary>
     [BindProperty(SupportsGet = true)]
     public DateOnly? CreatedDay { get; set; }
-    
+
+    /// <summary>Фільтр за автором створення (CreatorId).</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? CreatorId { get; set; }
+
     [TempData]
     public string? ErrorMessage { get; set; }
 
@@ -63,7 +67,16 @@ public class IndexModel : PageModel
     /// <summary>Календарні дні (UTC), за які є хоча б один видимий анонс — від новіших до старіших.</summary>
     public IReadOnlyList<DateOnly> AvailableDays { get; private set; } = Array.Empty<DateOnly>();
 
+    /// <summary>Користувачі, які створили хоча б один видимий анонс.</summary>
+    public IReadOnlyList<CreatorOption> AvailableCreators { get; private set; } = Array.Empty<CreatorOption>();
+
     public bool IsStaff { get; set; }
+
+    public class CreatorOption
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Login { get; set; } = string.Empty;
+    }
     public MonoRatesView? MonoRates { get; private set; }
     public PrivatRatesView? PrivatRates { get; private set; }
 
@@ -129,8 +142,16 @@ public class IndexModel : PageModel
             && string.Equals(Dir, "asc", StringComparison.OrdinalIgnoreCase)
             ? "desc"
             : "asc";
-        return Url.Page("/Announcements/Index", new { sort = column, dir = nextDir, createdDay = CreatedDay })!;
+        return Url.Page("/Announcements/Index", IndexRouteValues(column, nextDir))!;
     }
+
+    private object IndexRouteValues(string? sort = null, string? dir = null) => new
+    {
+        sort = sort ?? Sort,
+        dir = dir ?? Dir,
+        createdDay = CreatedDay,
+        creatorId = CreatorId
+    };
 
     public string HeaderIndicator(string column)
     {
@@ -149,7 +170,7 @@ public class IndexModel : PageModel
         Task<PrivatRatesView?> privatRatesTask;
 
         // Не оновлюємо курси під час фільтрації списку — беремо останні кешовані значення.
-        if (CreatedDay.HasValue)
+        if (CreatedDay.HasValue || !string.IsNullOrWhiteSpace(CreatorId))
         {
             monoRatesTask = Task.FromResult(GetCachedMonoRates());
             privatRatesTask = Task.FromResult(GetCachedPrivatRates());
@@ -166,12 +187,28 @@ public class IndexModel : PageModel
         var daysScope = _db.Announcements.AsNoTracking();
         if (!IsStaff)
             daysScope = daysScope.Where(a => a.CreatorId == uid);
+        else if (!string.IsNullOrWhiteSpace(CreatorId))
+            daysScope = daysScope.Where(a => a.CreatorId == CreatorId);
         var distinctUtcDates = await daysScope
             .Select(a => a.CreatedAtUtc.Date)
             .Distinct()
             .OrderByDescending(d => d)
             .ToListAsync();
         AvailableDays = distinctUtcDates.Select(DateOnly.FromDateTime).ToList();
+
+        if (IsStaff)
+        {
+            AvailableCreators = await _db.Announcements.AsNoTracking()
+                .Where(a => a.Creator != null && a.Creator.UserName != null)
+                .Select(a => new CreatorOption
+                {
+                    Id = a.CreatorId,
+                    Login = a.Creator!.UserName!
+                })
+                .Distinct()
+                .OrderBy(c => c.Login)
+                .ToListAsync();
+        }
 
         var query = _db.Announcements.AsNoTracking()
             .Include(a => a.Collages)
@@ -180,6 +217,8 @@ public class IndexModel : PageModel
             .AsQueryable();
         if (!IsStaff)
             query = query.Where(a => a.CreatorId == uid);
+        else if (!string.IsNullOrWhiteSpace(CreatorId))
+            query = query.Where(a => a.CreatorId == CreatorId);
 
         if (CreatedDay.HasValue)
         {
@@ -387,7 +426,7 @@ public class IndexModel : PageModel
     {
         Sort ??= "created";
         Dir ??= "desc";
-        return RedirectToPage("./Index", new { sort = Sort, dir = Dir, createdDay = CreatedDay });
+        return RedirectToPage("./Index", IndexRouteValues());
     }
 
     public async Task<IActionResult> OnPostTelegraph1Async(int id)
