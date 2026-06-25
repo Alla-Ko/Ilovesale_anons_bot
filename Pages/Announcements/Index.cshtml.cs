@@ -211,7 +211,6 @@ public class IndexModel : PageModel
         }
 
         var query = _db.Announcements.AsNoTracking()
-            .Include(a => a.Collages)
             .Include(a => a.Creator)
             .Include(a => a.LastUpdatedBy)
             .AsQueryable();
@@ -244,27 +243,64 @@ public class IndexModel : PageModel
             _ => desc ? query.OrderByDescending(a => a.CreatedAtUtc) : query.OrderBy(a => a.CreatedAtUtc)
         };
 
-        var list = await query.ToListAsync();
-        foreach (var a in list)
+        Items = await query.Select(a => new Row
         {
-            Items.Add(new Row
-            {
-                Id = a.Id,
-                CreatedAtUtc = a.CreatedAtUtc,
-                UpdatedAtUtc = a.UpdatedAtUtc,
-                Title = a.Title,
-                Country = a.Country,
-                CollageCount = a.Collages.Count,
-                CreatorLogin = a.Creator?.UserName ?? "—",
-                LastUpdatedLogin = a.LastUpdatedBy?.UserName ?? a.Creator?.UserName ?? "—",
-                TelegraphUrl1 = a.TelegraphUrl1,
-                TelegraphUrl2 = a.TelegraphUrl2,
-                CanEdit = IsStaff || a.CreatorId == uid
-            });
-        }
+            Id = a.Id,
+            CreatedAtUtc = a.CreatedAtUtc,
+            UpdatedAtUtc = a.UpdatedAtUtc,
+            Title = a.Title,
+            Country = a.Country,
+            CollageCount = a.Collages.Count,
+            CreatorLogin = a.Creator != null ? a.Creator.UserName ?? "—" : "—",
+            LastUpdatedLogin = a.LastUpdatedBy != null
+                ? a.LastUpdatedBy.UserName ?? "—"
+                : a.Creator != null ? a.Creator.UserName ?? "—" : "—",
+            TelegraphUrl1 = a.TelegraphUrl1,
+            TelegraphUrl2 = a.TelegraphUrl2,
+            CanEdit = IsStaff || a.CreatorId == uid
+        }).ToListAsync();
 
         MonoRates = await monoRatesTask;
         PrivatRates = await privatRatesTask;
+    }
+
+    /// <summary>Статус підписів колажів для рядків списку (асинхронне підвантаження з клієнта).</summary>
+    public async Task<IActionResult> OnGetCaptionStatusAsync([FromQuery(Name = "id")] int[] id)
+    {
+        if (id.Length == 0)
+            return new JsonResult(new Dictionary<int, string>());
+
+        var uid = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var isStaff = User.IsInRole(AppRoles.Admin) || User.IsInRole(AppRoles.Moderator);
+
+        var allowedIds = await _db.Announcements.AsNoTracking()
+            .Where(a => id.Contains(a.Id) && (isStaff || a.CreatorId == uid))
+            .Select(a => a.Id)
+            .ToListAsync();
+
+        if (allowedIds.Count == 0)
+            return new JsonResult(new Dictionary<int, string>());
+
+        var captions = await _db.Collages.AsNoTracking()
+            .Where(c => allowedIds.Contains(c.AnnouncementId))
+            .Select(c => new { c.AnnouncementId, c.Caption1, c.Caption2 })
+            .ToListAsync();
+
+        var byAnnouncement = captions
+            .GroupBy(c => c.AnnouncementId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var result = new Dictionary<int, string>();
+        foreach (var annId in allowedIds)
+        {
+            var items = byAnnouncement.GetValueOrDefault(annId);
+            var pairs = items != null
+                ? items.Select(c => ((string?)c.Caption1, (string?)c.Caption2))
+                : Enumerable.Empty<(string?, string?)>();
+            result[annId] = CollageCaptionStatusHelper.Compute(pairs).ToString().ToLowerInvariant();
+        }
+
+        return new JsonResult(result);
     }
 
     private async Task<MonoRatesView?> LoadMonoRatesAsync()

@@ -157,7 +157,12 @@
                 </td>
                 <td>@a.Title</td>
                 <td class="d-none d-md-table-cell">@CountryLabels.Labels[a.Country]</td>
-                <td class="d-none d-md-table-cell">@a.CollageCount</td>
+                <td class="d-none d-md-table-cell">
+                    @a.CollageCount@if (a.CollageCount > 0)
+                    {
+                        <span class="caption-status caption-status-loading ms-1" data-announcement-id="@a.Id" title="Перевірка підписів…" aria-label="Перевірка підписів">⏳</span>
+                    }
+                </td>
                 <td>
                     @if (a.CanEdit)
                     {
@@ -295,3 +300,7 @@
         }
     </tbody>
 </table>
+
+@section Scripts {
+    <script src="~/js/announcements-index.js" asp-append-version="true"></script>
+}

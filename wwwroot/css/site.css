@@ -76,6 +76,20 @@ html {
   cursor: grabbing;
 }
 
+.caption-status-loading {
+  opacity: 0.65;
+}
+
+.caption-status-partial {
+  color: #fd7e14;
+  font-weight: 600;
+}
+
+.caption-status-complete {
+  color: #198754;
+  font-weight: 600;
+}
+
 @media (max-width: 576px) {
   .table {
     font-size: 0.9rem;
